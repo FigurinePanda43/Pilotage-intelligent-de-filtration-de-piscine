@@ -14,13 +14,8 @@
         }
       }
     },
-    "error": {
-      "cannot_connect": "Failed to connect",
-      "unknown": "Unexpected error"
-    },
-    "abort": {
-      "already_configured": "Integration already configured"
-    }
+    "error": { "cannot_connect": "Failed to connect", "unknown": "Unexpected error" },
+    "abort": { "already_configured": "Integration already configured" }
   },
   "options": {
     "step": {
@@ -31,52 +26,30 @@
           "allowed_start": "Earliest allowed start hour",
           "allowed_end": "Latest allowed stop hour",
           "winter_cycle_hours": "Winter cycle interval (hours)",
-          "winter_run_minutes": "Winter cycle run duration (minutes)"
+          "winter_run_minutes": "Winter cycle run duration (minutes)",
+          "eco_off_peak_start": "Off-peak start hour (Option A)",
+          "eco_off_peak_end": "Off-peak end hour (Option A)",
+          "eco_off_peak_sensor": "Off-peak binary sensor (Option B)"
         }
       }
     }
   },
   "entity": {
     "sensor": {
-      "filtration_target_hours": {
-        "name": "Filtration target"
-      },
-      "filtration_done_hours": {
-        "name": "Filtration done"
-      },
-      "filtration_remaining_hours": {
-        "name": "Filtration remaining"
-      },
-      "filtration_status": {
-        "name": "Filtration status"
-      },
-      "water_temp_avg_3h": {
-        "name": "Water temp (3 h avg)"
-      },
-      "air_temp_avg_3h": {
-        "name": "Air temp (3 h avg)"
-      },
-      "uv_avg_1h": {
-        "name": "UV index (1 h avg)"
-      },
-      "wind_avg_1h": {
-        "name": "Wind speed (1 h avg)"
-      },
-      "dynamic_target": {
-        "name": "Dynamic target"
-      },
-      "minimum_target": {
-        "name": "Minimum target"
-      },
-      "time_remaining_window": {
-        "name": "Time left in solar window"
-      },
+      "filtration_target_hours": { "name": "Filtration target" },
+      "filtration_done_hours": { "name": "Filtration done" },
+      "filtration_remaining_hours": { "name": "Filtration remaining" },
+      "filtration_status": { "name": "Filtration status" },
+      "water_temp_avg_3h": { "name": "Water temp (3 h avg)" },
+      "air_temp_avg_3h": { "name": "Air temp (3 h avg)" },
+      "uv_avg_1h": { "name": "UV index (1 h avg)" },
+      "wind_avg_1h": { "name": "Wind speed (1 h avg)" },
+      "dynamic_target": { "name": "Dynamic target" },
+      "minimum_target": { "name": "Minimum target" },
+      "time_remaining_window": { "name": "Time left in solar window" },
       "delay_status": {
         "name": "Schedule status",
-        "state": {
-          "on_time": "On time",
-          "late": "Behind schedule"
-        }
+        "state": { "on_time": "On time", "late": "Behind schedule" }
       },
       "decision_reason": {
         "name": "Decision reason",
@@ -89,8 +62,9 @@
           "outside_hours": "Outside allowed hours",
           "idle": "Idle",
           "winter_frost_cycle": "Winter – frost cycle",
-          "winter_daily_limit": "Winter – daily limit",
-          "winter_complete": "Winter – complete"
+          "winter_standby": "Winter – standby (no frost)",
+          "eco_off_peak": "Eco – off-peak hours",
+          "eco_peak_hours": "Eco – waiting for off-peak"
         }
       },
       "system_state": {
@@ -99,15 +73,25 @@
           "normal": "Normal",
           "catching_up": "Catching up",
           "winter": "Winter mode",
+          "eco": "Eco mode",
           "idle": "Idle",
           "degraded": "Degraded (sensor unavailable)"
         }
+      },
+      "eco_shiftable_hours": { "name": "Eco – shiftable hours" },
+      "eco_remaining_shiftable": { "name": "Eco – remaining shiftable" },
+      "eco_allowed": {
+        "name": "Eco mode status",
+        "state": { "active": "Active", "suspended": "Suspended" }
+      },
+      "current_tariff": {
+        "name": "Current tariff",
+        "state": { "HC": "Off-peak (HC)", "HP": "Peak (HP)" }
       }
     },
     "switch": {
-      "winter_mode": {
-        "name": "Winter mode"
-      }
+      "winter_mode": { "name": "Winter mode" },
+      "eco_mode": { "name": "Eco mode" }
     }
   }
 }

@@ -28,6 +28,9 @@ from .const import (
     CONF_ALLOWED_END,
     CONF_WINTER_CYCLE_HOURS,
     CONF_WINTER_RUN_MINUTES,
+    CONF_ECO_OFF_PEAK_START,
+    CONF_ECO_OFF_PEAK_END,
+    CONF_ECO_OFF_PEAK_SENSOR,
     DEFAULT_RESET_TIME,
     DEFAULT_ALLOWED_START,
     DEFAULT_ALLOWED_END,
@@ -50,7 +53,10 @@ from .const import (
     AIR_TEMP_COEFF,
     WINTER_AIR_TEMP_THRESHOLD,
     WINTER_WATER_TEMP_THRESHOLD,
-    WINTER_NO_FROST_DAILY_HOURS,
+    ECO_DAY_MIN_RATIO,
+    ECO_DAY_MIN_HOURS,
+    ECO_TEMP_THRESHOLD,
+    ECO_UV_THRESHOLD,
     FALLBACK_WATER_TEMP,
     FALLBACK_AIR_TEMP,
     FALLBACK_UV,
@@ -86,6 +92,7 @@ class PoolFiltrationCoordinator(DataUpdateCoordinator):
         # Persistent state (loaded from storage)
         self._h_target: float = 0.0
         self._h_done: float = 0.0
+        self._h_done_day: float = 0.0       # pump time during solar window today
         self._last_reset_date: str | None = None
         self._last_commanded_on: datetime | None = None
         self._last_commanded_off: datetime | None = None
@@ -93,6 +100,7 @@ class PoolFiltrationCoordinator(DataUpdateCoordinator):
         self._pump_was_on: bool = False
         self._winter_mode: bool = False
         self._last_winter_cycle: datetime | None = None
+        self._eco_mode: bool = False
 
         self._persistent_loaded: bool = False
 
@@ -103,10 +111,14 @@ class PoolFiltrationCoordinator(DataUpdateCoordinator):
     async def set_winter_mode(self, enabled: bool) -> None:
         """Enable or disable winter mode and persist the change."""
         self._winter_mode = enabled
-        if enabled:
-            _LOGGER.info("Pool filtration: winter mode ENABLED")
-        else:
-            _LOGGER.info("Pool filtration: winter mode DISABLED")
+        _LOGGER.info("Pool filtration: winter mode %s", "ENABLED" if enabled else "DISABLED")
+        await self._save_persistent_data()
+        await self.async_request_refresh()
+
+    async def set_eco_mode(self, enabled: bool) -> None:
+        """Enable or disable eco mode and persist the change."""
+        self._eco_mode = enabled
+        _LOGGER.info("Pool filtration: eco mode %s", "ENABLED" if enabled else "DISABLED")
         await self._save_persistent_data()
         await self.async_request_refresh()
 
@@ -152,13 +164,7 @@ class PoolFiltrationCoordinator(DataUpdateCoordinator):
         h_dyn = self._h_dyn(water_temp_avg, uv_avg, wind_avg, air_temp_avg)
         self._h_target = max(self._h_target, h_min, h_dyn)
 
-        # Accumulate pump run-time before reading new state
-        pump_is_on = self._read_pump_state()
-        self._accumulate_run_time(now, pump_is_on)
-
-        h_remaining = max(0.0, self._h_target - self._h_done)
-
-        # Solar window
+        # Solar window – computed BEFORE accumulation so in_window is available
         solar_noon = self._solar_noon(now)
         window_start = solar_noon - timedelta(hours=SOLAR_WINDOW_HOURS)
         window_end = solar_noon + timedelta(hours=SOLAR_WINDOW_HOURS)
@@ -167,7 +173,40 @@ class PoolFiltrationCoordinator(DataUpdateCoordinator):
             0.0, (window_end - now).total_seconds() / 3600.0
         )
 
-        # Delay status
+        # Accumulate pump run-time (tracks in-window time separately for eco)
+        pump_is_on = self._read_pump_state()
+        self._accumulate_run_time(now, pump_is_on, in_window)
+
+        h_remaining = max(0.0, self._h_target - self._h_done)
+
+        # ── Eco mode computations ────────────────────────────────────────
+        h_day_min = max(ECO_DAY_MIN_RATIO * self._h_target, ECO_DAY_MIN_HOURS)
+        h_shiftable = max(0.0, self._h_target - h_day_min)
+        h_done_shiftable = max(0.0, self._h_done - self._h_done_day)
+        h_shiftable_remaining = max(0.0, h_shiftable - h_done_shiftable)
+        is_off_peak = self._is_off_peak(now)
+
+        # Progressive minimum: fraction of h_day_min expected by current time
+        if in_window:
+            w_total = (window_end - window_start).total_seconds()
+            w_elapsed_frac = (now - window_start).total_seconds() / w_total
+            h_day_min_prog = h_day_min * max(0.0, min(1.0, w_elapsed_frac))
+        else:
+            h_day_min_prog = h_day_min
+
+        eco_allowed = (
+            self._eco_mode
+            and not self._winter_mode
+            # No critical catch-up in progress
+            and not (time_remaining_window > 0 and h_remaining > time_remaining_window)
+            # Environmental conditions are moderate
+            and water_temp <= ECO_TEMP_THRESHOLD
+            and uv_avg <= ECO_UV_THRESHOLD
+            # Solar window minimum is on track
+            and not (in_window and self._h_done_day < h_day_min_prog)
+        )
+
+        # ── Delay status ─────────────────────────────────────────────────
         if h_remaining > 0 and in_window and time_remaining_window > 0:
             delay_status = (
                 "late" if h_remaining > time_remaining_window else "on_time"
@@ -177,11 +216,13 @@ class PoolFiltrationCoordinator(DataUpdateCoordinator):
         else:
             delay_status = "on_time"
 
-        # Decide pump state
+        # ── Frost / winter condition ──────────────────────────────────────
         frost_condition = (
             air_temp <= WINTER_AIR_TEMP_THRESHOLD
             or water_temp <= WINTER_WATER_TEMP_THRESHOLD
         )
+
+        # ── Pump decision ────────────────────────────────────────────────
         pump_should_be_on, decision_reason = self._decide(
             now=now,
             pump_is_on=pump_is_on,
@@ -190,19 +231,17 @@ class PoolFiltrationCoordinator(DataUpdateCoordinator):
             time_remaining_window=time_remaining_window,
             window_end=window_end,
             water_temp=water_temp,
-            air_temp=air_temp,
             frost_condition=frost_condition,
+            eco_allowed=eco_allowed,
+            h_done_day=self._h_done_day,
+            h_day_min=h_day_min,
+            h_shiftable_remaining=h_shiftable_remaining,
+            is_off_peak=is_off_peak,
         )
 
-        # System-level state (for dashboard / diagnostics)
-        system_state = self._compute_system_state(
-            pump_should_be_on, decision_reason, degraded
-        )
+        system_state = self._compute_system_state(pump_should_be_on, decision_reason, degraded)
 
-        # Apply decision to physical switch
         await self._apply_decision(now, pump_is_on, pump_should_be_on)
-
-        # Persist after every update
         await self._save_persistent_data()
 
         return {
@@ -237,6 +276,15 @@ class PoolFiltrationCoordinator(DataUpdateCoordinator):
             # Winter
             "winter_mode": self._winter_mode,
             "frost_condition": frost_condition,
+            # Eco
+            "eco_mode": self._eco_mode,
+            "eco_allowed": eco_allowed,
+            "is_off_peak": is_off_peak,
+            "current_tariff": "HC" if is_off_peak else "HP",
+            "h_day_min": h_day_min,
+            "h_shiftable": h_shiftable,
+            "h_shiftable_remaining": h_shiftable_remaining,
+            "h_done_day": self._h_done_day,
             # Diagnostics
             "degraded": degraded,
         }
@@ -279,16 +327,27 @@ class PoolFiltrationCoordinator(DataUpdateCoordinator):
         time_remaining_window: float,
         window_end: datetime,
         water_temp: float,
-        air_temp: float,
         frost_condition: bool,
+        eco_allowed: bool,
+        h_done_day: float,
+        h_day_min: float,
+        h_shiftable_remaining: float,
+        is_off_peak: bool,
     ) -> tuple[bool, str]:
         """Return (should_run, reason) for pump decision."""
 
-        # --- Winter mode overrides normal logic ---
+        # Winter mode overrides everything
         if self._winter_mode:
-            return self._decide_winter(now, pump_is_on, frost_condition)
+            return self._decide_winter(now, frost_condition)
 
-        # --- Normal mode ---
+        # Eco mode (only when eco_allowed; otherwise fall through to normal logic)
+        if eco_allowed:
+            return self._decide_eco(
+                now, h_remaining, in_window, time_remaining_window,
+                window_end, h_done_day, h_day_min, h_shiftable_remaining, is_off_peak,
+            )
+
+        # ── Normal mode ──────────────────────────────────────────────────
         if self._h_done >= MAX_FILTRATION_HOURS:
             return False, "daily_limit_reached"
 
@@ -298,57 +357,86 @@ class PoolFiltrationCoordinator(DataUpdateCoordinator):
         allowed_start, allowed_end = self._allowed_hours()
         current_hour = now.hour
 
-        # Condition 1 – inside priority window and still remaining time
         cond1 = in_window and h_remaining > 0
-
-        # Condition 2 – critical catch-up: more remaining than time left in window
         cond2 = time_remaining_window > 0 and h_remaining > time_remaining_window
-
-        # Condition 3 – end-of-day catch-up (after window, still below minimum)
         cond3 = now >= window_end and self._h_done < self._h_target
 
         if not (cond1 or cond2 or cond3):
             return False, "idle"
 
-        # Enforce allowed time window (can be overridden by catch-up need)
         inside_allowed = allowed_start <= current_hour < allowed_end
         if not inside_allowed and not cond3:
             return False, "outside_hours"
 
-        # Determine the most specific active reason
         if cond3:
             return True, "end_of_day_catchup"
         if cond2:
             return True, "catching_up_delay"
         return True, "solar_window"
 
-    def _decide_winter(
-        self, now: datetime, pump_is_on: bool, frost_condition: bool
-    ) -> tuple[bool, str]:
-        """Winter mode decision."""
+    def _decide_winter(self, now: datetime, frost_condition: bool) -> tuple[bool, str]:
+        """Winter mode: run anti-freeze cycles when frost is detected, OFF otherwise."""
+        if not frost_condition:
+            # No frost risk → pump stays completely OFF in winter mode
+            return False, "winter_standby"
+
         opts = self.config_entry.options
         cycle_hours = int(opts.get(CONF_WINTER_CYCLE_HOURS, DEFAULT_WINTER_CYCLE_HOURS))
         run_minutes = int(opts.get(CONF_WINTER_RUN_MINUTES, DEFAULT_WINTER_RUN_MINUTES))
 
-        if frost_condition:
-            if self._last_winter_cycle is None:
-                return True, "winter_frost_cycle"
+        if self._last_winter_cycle is None:
+            return True, "winter_frost_cycle"
 
-            elapsed_since_cycle_start = (
-                now - self._last_winter_cycle
-            ).total_seconds() / 60.0
+        elapsed_min = (now - self._last_winter_cycle).total_seconds() / 60.0
 
-            if elapsed_since_cycle_start <= run_minutes:
-                return True, "winter_frost_cycle"
+        # Still within the current run window
+        if elapsed_min <= run_minutes:
+            return True, "winter_frost_cycle"
 
-            if elapsed_since_cycle_start >= cycle_hours * 60.0:
-                return True, "winter_frost_cycle"
+        # Time for a new cycle
+        if elapsed_min >= cycle_hours * 60.0:
+            return True, "winter_frost_cycle"
 
-            return False, "winter_frost_cycle"
-        else:
-            if self._h_done < WINTER_NO_FROST_DAILY_HOURS:
-                return True, "winter_daily_limit"
-            return False, "winter_complete"
+        # Between cycles
+        return False, "winter_frost_cycle"
+
+    def _decide_eco(
+        self,
+        now: datetime,
+        h_remaining: float,
+        in_window: bool,
+        time_remaining_window: float,
+        window_end: datetime,
+        h_done_day: float,
+        h_day_min: float,
+        h_shiftable_remaining: float,
+        is_off_peak: bool,
+    ) -> tuple[bool, str]:
+        """Eco mode decision: shift shiftable hours to off-peak, guard day minimum."""
+        if self._h_done >= MAX_FILTRATION_HOURS:
+            return False, "daily_limit_reached"
+
+        if h_remaining <= 0:
+            return False, "target_reached"
+
+        allowed_start, allowed_end = self._allowed_hours()
+        current_hour = now.hour
+
+        # Safety: end-of-day catch-up always overrides eco preference
+        if now >= window_end and self._h_done < self._h_target:
+            if allowed_start <= current_hour < allowed_end:
+                return True, "end_of_day_catchup"
+
+        if not (allowed_start <= current_hour < allowed_end):
+            return False, "outside_hours"
+
+        # Off-peak hours with shiftable time remaining
+        if is_off_peak and h_shiftable_remaining > 0:
+            return True, "eco_off_peak"
+
+        # Peak hours in eco mode → wait for off-peak (day min already met because
+        # eco_allowed=True guarantees h_done_day >= h_day_min_prog)
+        return False, "eco_peak_hours"
 
     # ------------------------------------------------------------------
     # Pump control
@@ -418,15 +506,18 @@ class PoolFiltrationCoordinator(DataUpdateCoordinator):
             return False
         return state.state == "on"
 
-    def _accumulate_run_time(self, now: datetime, pump_is_on: bool) -> None:
-        """Add elapsed on-time to h_done since last check."""
+    def _accumulate_run_time(
+        self, now: datetime, pump_is_on: bool, in_window: bool
+    ) -> None:
+        """Add elapsed on-time to h_done (and h_done_day when in solar window)."""
         if self._last_state_check is not None and self._pump_was_on:
             elapsed_h = (now - self._last_state_check).total_seconds() / 3600.0
-            # Clamp to a sane maximum per cycle (e.g. 2× the scan interval) to
-            # avoid huge accumulations after long downtimes / restarts.
+            # Cap to 2× scan interval to avoid huge jumps after restarts
             max_elapsed = DEFAULT_SCAN_INTERVAL * 2 / 60.0
             elapsed_h = min(elapsed_h, max_elapsed)
             self._h_done = min(self._h_done + elapsed_h, MAX_FILTRATION_HOURS)
+            if in_window:
+                self._h_done_day = min(self._h_done_day + elapsed_h, MAX_FILTRATION_HOURS)
 
         self._last_state_check = now
         self._pump_was_on = pump_is_on
@@ -450,11 +541,13 @@ class PoolFiltrationCoordinator(DataUpdateCoordinator):
         # Reset once per day, after the reset time has passed
         if now >= today_reset and self._last_reset_date != today_str:
             _LOGGER.info(
-                "Pool filtration: daily reset (h_done=%.2f → 0, h_target=%.2f → 0)",
+                "Pool filtration: daily reset (h_done=%.2f → 0, h_done_day=%.2f → 0, h_target=%.2f → 0)",
                 self._h_done,
+                self._h_done_day,
                 self._h_target,
             )
             self._h_done = 0.0
+            self._h_done_day = 0.0
             self._h_target = 0.0
             self._last_reset_date = today_str
 
@@ -490,9 +583,44 @@ class PoolFiltrationCoordinator(DataUpdateCoordinator):
             return "winter"
         if reason in ("catching_up_delay", "end_of_day_catchup"):
             return "catching_up"
+        if reason.startswith("eco"):
+            return "eco"
         if pump_should_be_on:
             return "normal"
         return "idle"
+
+    def _is_off_peak(self, now: datetime) -> bool:
+        """Return True when the current time is in off-peak (heures creuses) period.
+
+        Priority: binary_sensor (Option B) > fixed hours (Option A).
+        If neither is configured, always returns False (eco mode has no effect).
+        """
+        opts = self.config_entry.options
+
+        # Option B – binary sensor
+        sensor_id = opts.get(CONF_ECO_OFF_PEAK_SENSOR)
+        if sensor_id:
+            state = self.hass.states.get(sensor_id)
+            if state is not None and state.state not in ("unavailable", "unknown"):
+                return state.state == "on"
+
+        # Option A – fixed hours
+        raw_start = opts.get(CONF_ECO_OFF_PEAK_START)
+        raw_end = opts.get(CONF_ECO_OFF_PEAK_END)
+        if raw_start is None or raw_end is None:
+            return False
+
+        try:
+            start = int(raw_start)
+            end = int(raw_end)
+        except (ValueError, TypeError):
+            return False
+
+        current_hour = now.hour
+        if start <= end:
+            return start <= current_hour < end
+        # Overnight window (e.g. 22 → 06)
+        return current_hour >= start or current_hour < end
 
     # ------------------------------------------------------------------
     # Sensor helpers
@@ -593,9 +721,11 @@ class PoolFiltrationCoordinator(DataUpdateCoordinator):
 
         self._h_target = float(data.get("h_target", 0.0))
         self._h_done = float(data.get("h_done", 0.0))
+        self._h_done_day = float(data.get("h_done_day", 0.0))
         self._last_reset_date = data.get("last_reset_date")
         self._pump_was_on = bool(data.get("pump_was_on", False))
         self._winter_mode = bool(data.get("winter_mode", False))
+        self._eco_mode = bool(data.get("eco_mode", False))
 
         def _parse_dt(key: str) -> datetime | None:
             raw = data.get(key)
@@ -626,9 +756,11 @@ class PoolFiltrationCoordinator(DataUpdateCoordinator):
             {
                 "h_target": self._h_target,
                 "h_done": self._h_done,
+                "h_done_day": self._h_done_day,
                 "last_reset_date": self._last_reset_date,
                 "pump_was_on": self._pump_was_on,
                 "winter_mode": self._winter_mode,
+                "eco_mode": self._eco_mode,
                 "last_commanded_on": _iso(self._last_commanded_on),
                 "last_commanded_off": _iso(self._last_commanded_off),
                 "last_state_check": _iso(self._last_state_check),

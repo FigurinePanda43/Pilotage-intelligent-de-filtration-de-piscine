@@ -141,6 +141,35 @@ SENSORS: tuple[PoolSensorDescription, ...] = (
         translation_key="system_state",
         value_fn=lambda d: d["system_state"],
     ),
+    # --- Eco mode sensors ---
+    PoolSensorDescription(
+        key="eco_shiftable_hours",
+        translation_key="eco_shiftable_hours",
+        native_unit_of_measurement=UnitOfTime.HOURS,
+        device_class=SensorDeviceClass.DURATION,
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=2,
+        value_fn=lambda d: round(d["h_shiftable"], 2),
+    ),
+    PoolSensorDescription(
+        key="eco_remaining_shiftable",
+        translation_key="eco_remaining_shiftable",
+        native_unit_of_measurement=UnitOfTime.HOURS,
+        device_class=SensorDeviceClass.DURATION,
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=2,
+        value_fn=lambda d: round(d["h_shiftable_remaining"], 2),
+    ),
+    PoolSensorDescription(
+        key="eco_allowed",
+        translation_key="eco_allowed",
+        value_fn=lambda d: "active" if d["eco_allowed"] else "suspended",
+    ),
+    PoolSensorDescription(
+        key="current_tariff",
+        translation_key="current_tariff",
+        value_fn=lambda d: d["current_tariff"],
+    ),
 )
 
 

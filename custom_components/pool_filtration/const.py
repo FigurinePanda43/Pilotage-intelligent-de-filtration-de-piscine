@@ -70,7 +70,19 @@ AIR_TEMP_COEFF = 0.12
 # ---------------------------------------------------------------------------
 WINTER_AIR_TEMP_THRESHOLD = 0.0    # °C
 WINTER_WATER_TEMP_THRESHOLD = 5.0  # °C
-WINTER_NO_FROST_DAILY_HOURS = 2.0  # run 2 h/day when no frost
+WINTER_NO_FROST_DAILY_HOURS = 0.0  # no frost in winter mode → pump stays OFF
+
+# ---------------------------------------------------------------------------
+# Eco mode
+# ---------------------------------------------------------------------------
+CONF_ECO_OFF_PEAK_START = "eco_off_peak_start"   # option A: integer hour 0-23
+CONF_ECO_OFF_PEAK_END = "eco_off_peak_end"       # option A: integer hour 0-23
+CONF_ECO_OFF_PEAK_SENSOR = "eco_off_peak_sensor" # option B: binary_sensor entity
+
+ECO_DAY_MIN_RATIO = 0.6    # 60 % of H_target must be done during solar window
+ECO_DAY_MIN_HOURS = 3.0    # absolute floor for daytime minimum
+ECO_TEMP_THRESHOLD = 28.0  # °C – above this, eco is suspended
+ECO_UV_THRESHOLD = 6.0     # index – above this, eco is suspended
 
 # ---------------------------------------------------------------------------
 # Fallback sensor values when unavailable

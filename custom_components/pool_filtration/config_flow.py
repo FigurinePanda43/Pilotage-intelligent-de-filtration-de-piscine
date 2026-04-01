@@ -21,12 +21,17 @@ from .const import (
     CONF_ALLOWED_END,
     CONF_WINTER_CYCLE_HOURS,
     CONF_WINTER_RUN_MINUTES,
+    CONF_ECO_OFF_PEAK_START,
+    CONF_ECO_OFF_PEAK_END,
+    CONF_ECO_OFF_PEAK_SENSOR,
     DEFAULT_RESET_TIME,
     DEFAULT_ALLOWED_START,
     DEFAULT_ALLOWED_END,
     DEFAULT_WINTER_CYCLE_HOURS,
     DEFAULT_WINTER_RUN_MINUTES,
 )
+
+_SLIDER = "slider"
 
 
 class PoolFiltrationConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
@@ -39,10 +44,7 @@ class PoolFiltrationConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     ) -> config_entries.FlowResult:
         """Step 1 – entity selection."""
         if user_input is not None:
-            return self.async_create_entry(
-                title="Pool Filtration",
-                data=user_input,
-            )
+            return self.async_create_entry(title="Pool Filtration", data=user_input)
 
         schema = vol.Schema(
             {
@@ -51,14 +53,12 @@ class PoolFiltrationConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 ),
                 vol.Required(CONF_WATER_TEMP): selector.EntitySelector(
                     selector.EntitySelectorConfig(
-                        domain="sensor",
-                        device_class="temperature",
+                        domain="sensor", device_class="temperature"
                     )
                 ),
                 vol.Required(CONF_AIR_TEMP): selector.EntitySelector(
                     selector.EntitySelectorConfig(
-                        domain="sensor",
-                        device_class="temperature",
+                        domain="sensor", device_class="temperature"
                     )
                 ),
                 vol.Required(CONF_UV_SENSOR): selector.EntitySelector(
@@ -81,77 +81,79 @@ class PoolFiltrationConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         config_entry: config_entries.ConfigEntry,
     ) -> PoolFiltrationOptionsFlow:
         """Return the options flow."""
-        return PoolFiltrationOptionsFlow(config_entry)
+        # Do NOT pass config_entry here – HA 2024.x+ sets it automatically as
+        # a read-only property on the OptionsFlow base class.  Passing it to
+        # __init__ and then assigning self.config_entry would raise
+        # AttributeError ("can't set attribute") on those versions.
+        return PoolFiltrationOptionsFlow()
 
 
 class PoolFiltrationOptionsFlow(config_entries.OptionsFlow):
     """Handle operational option updates."""
 
-    def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
-        self.config_entry = config_entry
+    # No __init__ override – self.config_entry is provided by the HA framework.
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
     ) -> config_entries.FlowResult:
-        """Show options form."""
+        """Show the options form (general + winter + eco)."""
         opts = self.config_entry.options
 
         if user_input is not None:
             return self.async_create_entry(title="", data=user_input)
 
+        def _num(min_: int, max_: int, step: int = 1) -> selector.NumberSelector:
+            return selector.NumberSelector(
+                selector.NumberSelectorConfig(
+                    min=min_, max=max_, step=step, mode=_SLIDER
+                )
+            )
+
         schema = vol.Schema(
             {
+                # ── General ────────────────────────────────────────────────
                 vol.Optional(
                     CONF_RESET_TIME,
                     default=opts.get(CONF_RESET_TIME, DEFAULT_RESET_TIME),
                 ): selector.TimeSelector(selector.TimeSelectorConfig()),
                 vol.Optional(
                     CONF_ALLOWED_START,
-                    default=opts.get(CONF_ALLOWED_START, DEFAULT_ALLOWED_START),
-                ): selector.NumberSelector(
-                    selector.NumberSelectorConfig(
-                        min=0,
-                        max=23,
-                        step=1,
-                        mode=selector.NumberSelectorMode.SLIDER,
-                    )
-                ),
+                    default=int(opts.get(CONF_ALLOWED_START, DEFAULT_ALLOWED_START)),
+                ): _num(0, 23),
                 vol.Optional(
                     CONF_ALLOWED_END,
-                    default=opts.get(CONF_ALLOWED_END, DEFAULT_ALLOWED_END),
-                ): selector.NumberSelector(
-                    selector.NumberSelectorConfig(
-                        min=1,
-                        max=24,
-                        step=1,
-                        mode=selector.NumberSelectorMode.SLIDER,
-                    )
-                ),
+                    default=int(opts.get(CONF_ALLOWED_END, DEFAULT_ALLOWED_END)),
+                ): _num(1, 24),
+                # ── Winter ─────────────────────────────────────────────────
                 vol.Optional(
                     CONF_WINTER_CYCLE_HOURS,
-                    default=opts.get(
-                        CONF_WINTER_CYCLE_HOURS, DEFAULT_WINTER_CYCLE_HOURS
+                    default=int(
+                        opts.get(CONF_WINTER_CYCLE_HOURS, DEFAULT_WINTER_CYCLE_HOURS)
                     ),
-                ): selector.NumberSelector(
-                    selector.NumberSelectorConfig(
-                        min=1,
-                        max=12,
-                        step=1,
-                        mode=selector.NumberSelectorMode.SLIDER,
-                    )
-                ),
+                ): _num(1, 12),
                 vol.Optional(
                     CONF_WINTER_RUN_MINUTES,
-                    default=opts.get(
-                        CONF_WINTER_RUN_MINUTES, DEFAULT_WINTER_RUN_MINUTES
+                    default=int(
+                        opts.get(CONF_WINTER_RUN_MINUTES, DEFAULT_WINTER_RUN_MINUTES)
                     ),
-                ): selector.NumberSelector(
-                    selector.NumberSelectorConfig(
-                        min=10,
-                        max=120,
-                        step=5,
-                        mode=selector.NumberSelectorMode.SLIDER,
-                    )
+                ): _num(10, 120, step=5),
+                # ── Eco mode – Option A (fixed hours) ──────────────────────
+                vol.Optional(
+                    CONF_ECO_OFF_PEAK_START,
+                    description={"suggested_value": opts.get(CONF_ECO_OFF_PEAK_START)},
+                ): _num(0, 23),
+                vol.Optional(
+                    CONF_ECO_OFF_PEAK_END,
+                    description={"suggested_value": opts.get(CONF_ECO_OFF_PEAK_END)},
+                ): _num(0, 23),
+                # ── Eco mode – Option B (binary sensor) ────────────────────
+                vol.Optional(
+                    CONF_ECO_OFF_PEAK_SENSOR,
+                    description={
+                        "suggested_value": opts.get(CONF_ECO_OFF_PEAK_SENSOR)
+                    },
+                ): selector.EntitySelector(
+                    selector.EntitySelectorConfig(domain="binary_sensor")
                 ),
             }
         )

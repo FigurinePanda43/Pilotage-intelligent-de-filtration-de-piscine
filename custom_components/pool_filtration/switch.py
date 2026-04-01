@@ -18,7 +18,10 @@ async def async_setup_entry(
 ) -> None:
     """Set up Pool Filtration switches from config entry."""
     coordinator: PoolFiltrationCoordinator = hass.data[DOMAIN][entry.entry_id]
-    async_add_entities([PoolWinterModeSwitch(coordinator, entry)])
+    async_add_entities([
+        PoolWinterModeSwitch(coordinator, entry),
+        PoolEcoModeSwitch(coordinator, entry),
+    ])
 
 
 class PoolWinterModeSwitch(CoordinatorEntity[PoolFiltrationCoordinator], SwitchEntity):
@@ -52,3 +55,36 @@ class PoolWinterModeSwitch(CoordinatorEntity[PoolFiltrationCoordinator], SwitchE
 
     async def async_turn_off(self, **kwargs) -> None:  # noqa: ANN003
         await self.coordinator.set_winter_mode(False)
+
+
+class PoolEcoModeSwitch(CoordinatorEntity[PoolFiltrationCoordinator], SwitchEntity):
+    """Switch to enable/disable eco (off-peak optimisation) mode."""
+
+    _attr_has_entity_name = True
+    _attr_translation_key = "eco_mode"
+    _attr_device_class = SwitchDeviceClass.SWITCH
+    _attr_icon = "mdi:leaf"
+
+    def __init__(
+        self,
+        coordinator: PoolFiltrationCoordinator,
+        entry: ConfigEntry,
+    ) -> None:
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{entry.entry_id}_eco_mode"
+        self._attr_device_info = {
+            "identifiers": {(DOMAIN, entry.entry_id)},
+            "name": "Pool Filtration",
+            "manufacturer": "Pool Filtration",
+            "model": "Smart Controller",
+        }
+
+    @property
+    def is_on(self) -> bool:
+        return self.coordinator._eco_mode
+
+    async def async_turn_on(self, **kwargs) -> None:  # noqa: ANN003
+        await self.coordinator.set_eco_mode(True)
+
+    async def async_turn_off(self, **kwargs) -> None:  # noqa: ANN003
+        await self.coordinator.set_eco_mode(False)

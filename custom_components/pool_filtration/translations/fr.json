@@ -14,13 +14,8 @@
         }
       }
     },
-    "error": {
-      "cannot_connect": "Connexion impossible",
-      "unknown": "Erreur inattendue"
-    },
-    "abort": {
-      "already_configured": "Intégration déjà configurée"
-    }
+    "error": { "cannot_connect": "Connexion impossible", "unknown": "Erreur inattendue" },
+    "abort": { "already_configured": "Intégration déjà configurée" }
   },
   "options": {
     "step": {
@@ -31,52 +26,30 @@
           "allowed_start": "Heure de début autorisée",
           "allowed_end": "Heure de fin autorisée",
           "winter_cycle_hours": "Intervalle entre cycles hivernage (heures)",
-          "winter_run_minutes": "Durée d'un cycle hivernage (minutes)"
+          "winter_run_minutes": "Durée d'un cycle hivernage (minutes)",
+          "eco_off_peak_start": "Début des heures creuses (Option A)",
+          "eco_off_peak_end": "Fin des heures creuses (Option A)",
+          "eco_off_peak_sensor": "Binary sensor heures creuses (Option B)"
         }
       }
     }
   },
   "entity": {
     "sensor": {
-      "filtration_target_hours": {
-        "name": "Objectif filtration"
-      },
-      "filtration_done_hours": {
-        "name": "Filtration effectuée"
-      },
-      "filtration_remaining_hours": {
-        "name": "Filtration restante"
-      },
-      "filtration_status": {
-        "name": "État filtration"
-      },
-      "water_temp_avg_3h": {
-        "name": "Temp. eau (moy. 3 h)"
-      },
-      "air_temp_avg_3h": {
-        "name": "Temp. air (moy. 3 h)"
-      },
-      "uv_avg_1h": {
-        "name": "UV (moy. 1 h)"
-      },
-      "wind_avg_1h": {
-        "name": "Vent (moy. 1 h)"
-      },
-      "dynamic_target": {
-        "name": "Objectif dynamique"
-      },
-      "minimum_target": {
-        "name": "Objectif minimal"
-      },
-      "time_remaining_window": {
-        "name": "Temps restant fenêtre solaire"
-      },
+      "filtration_target_hours": { "name": "Objectif filtration" },
+      "filtration_done_hours": { "name": "Filtration effectuée" },
+      "filtration_remaining_hours": { "name": "Filtration restante" },
+      "filtration_status": { "name": "État filtration" },
+      "water_temp_avg_3h": { "name": "Temp. eau (moy. 3 h)" },
+      "air_temp_avg_3h": { "name": "Temp. air (moy. 3 h)" },
+      "uv_avg_1h": { "name": "UV (moy. 1 h)" },
+      "wind_avg_1h": { "name": "Vent (moy. 1 h)" },
+      "dynamic_target": { "name": "Objectif dynamique" },
+      "minimum_target": { "name": "Objectif minimal" },
+      "time_remaining_window": { "name": "Temps restant fenêtre solaire" },
       "delay_status": {
         "name": "Statut du planning",
-        "state": {
-          "on_time": "À l'heure",
-          "late": "En retard"
-        }
+        "state": { "on_time": "À l'heure", "late": "En retard" }
       },
       "decision_reason": {
         "name": "Raison de la décision",
@@ -89,8 +62,9 @@
           "outside_hours": "Hors plage horaire",
           "idle": "En attente",
           "winter_frost_cycle": "Hivernage – cycle gel",
-          "winter_daily_limit": "Hivernage – limite journalière",
-          "winter_complete": "Hivernage – terminé"
+          "winter_standby": "Hivernage – veille (pas de gel)",
+          "eco_off_peak": "Éco – heures creuses",
+          "eco_peak_hours": "Éco – attente heures creuses"
         }
       },
       "system_state": {
@@ -99,15 +73,25 @@
           "normal": "Normal",
           "catching_up": "Rattrapage en cours",
           "winter": "Mode hivernage",
+          "eco": "Mode éco",
           "idle": "En attente",
           "degraded": "Dégradé (capteur indisponible)"
         }
+      },
+      "eco_shiftable_hours": { "name": "Éco – heures déplaçables" },
+      "eco_remaining_shiftable": { "name": "Éco – heures déplaçables restantes" },
+      "eco_allowed": {
+        "name": "Statut mode éco",
+        "state": { "active": "Actif", "suspended": "Suspendu" }
+      },
+      "current_tariff": {
+        "name": "Tarif actuel",
+        "state": { "HC": "Heures creuses (HC)", "HP": "Heures pleines (HP)" }
       }
     },
     "switch": {
-      "winter_mode": {
-        "name": "Mode hivernage"
-      }
+      "winter_mode": { "name": "Mode hivernage" },
+      "eco_mode": { "name": "Mode éco" }
     }
   }
 }
