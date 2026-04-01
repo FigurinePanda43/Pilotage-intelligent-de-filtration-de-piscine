@@ -218,7 +218,7 @@ class PoolFiltrationCoordinator(DataUpdateCoordinator):
         # ── Frost / winter condition ──────────────────────────────────────
         frost_condition = (
             air_temp <= WINTER_AIR_TEMP_THRESHOLD
-            or water_temp <= WINTER_WATER_TEMP_THRESHOLD
+            and water_temp <= WINTER_WATER_TEMP_THRESHOLD
         )
 
         # ── Pump decision ────────────────────────────────────────────────

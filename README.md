@@ -207,7 +207,7 @@ Ces règles s'appliquent **par-dessus** la décision logique, comme des verrous 
 
 Activé manuellement via `switch.pool_winter_mode`. Remplace entièrement la logique normale.
 
-**Si gel détecté** (T_air ≤ 0 °C **ou** T_eau ≤ 5 °C) :
+**Si gel détecté** (T_air ≤ 0 °C **et** T_eau ≤ 5 °C) :
 La pompe tourne 1 h toutes les 4 h (durée et intervalle configurables).
 L'objectif est de maintenir l'eau en mouvement pour éviter le gel des tuyaux.
 
@@ -319,7 +319,7 @@ Activé via `switch.pool_winter_mode`.
 
 | Condition | Comportement |
 |-----------|--------------|
-| T_air ≤ 0 °C **ou** T_eau ≤ 5 °C | Cycles anti-gel : 1 h toutes les 4 h (configurable) |
+| T_air ≤ 0 °C **et** T_eau ≤ 5 °C | Cycles anti-gel : 1 h toutes les 4 h (configurable) |
 | Hiver sans gel | Pompe **éteinte** (veille hivernage) |
 
 ---
