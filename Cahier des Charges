@@ -1,0 +1,266 @@
+Cahier des charges — Intégration Home Assistant (HACS)
+
+Pilotage intelligent de filtration de piscine
+
+⸻
+
+1. Objectif du projet
+
+Développer une intégration Home Assistant distribuée via HACS, permettant de piloter automatiquement une pompe de filtration de piscine domestique.
+
+L’intégration doit :
+	•	Être 100% autonome après configuration initiale
+	•	Ne nécessiter aucune automatisation manuelle supplémentaire
+	•	S’appuyer sur des données capteurs existantes
+	•	Générer ses propres capteurs dérivés, logiques et décisions
+	•	Implémenter une logique robuste, évolutive et sécurisée
+
+⸻
+
+2. Philosophie du système
+
+Le système repose sur une logique de contrôle en trois niveaux :
+	1.	Calcul d’un besoin minimal journalier
+	2.	Ajustement dynamique en fonction des conditions observées
+	3.	Pilotage temps réel avec logique de rattrapage et garde-fous
+
+Le système ne doit pas tenter de prédire, mais s’adapter en continu aux conditions réelles.
+
+⸻
+
+3. Installation et expérience utilisateur
+
+3.1 Distribution
+	•	Intégration disponible via HACS (GitHub)
+	•	Installation standard via HACS → redémarrage HA → ajout via UI
+
+3.2 Configuration utilisateur (obligatoire)
+
+L’utilisateur doit uniquement renseigner :
+
+Entités requises :
+	•	Interrupteur pompe (switch)
+	•	Capteur température eau
+	•	Capteur température extérieure
+	•	Capteur UV
+	•	Capteur vent (vitesse)
+
+Optionnel :
+	•	Capteur vent rafales (si disponible)
+
+3.3 Contraintes UX
+	•	Aucun YAML requis
+	•	Aucune automatisation à créer manuellement
+	•	Configuration via interface graphique uniquement
+	•	Système fonctionnel immédiatement après validation
+
+⸻
+
+4. Fonctionnalités principales
+
+4.1 Génération automatique d’entités
+
+L’intégration doit créer :
+
+Capteurs principaux :
+	•	sensor.pool_filtration_target_hours
+	•	sensor.pool_filtration_done_hours
+	•	sensor.pool_filtration_remaining_hours
+	•	sensor.pool_filtration_status (ON/OFF logique)
+
+Capteurs intermédiaires :
+	•	Moyenne glissante température eau (3h)
+	•	Moyenne glissante température air (3h)
+	•	Moyenne glissante UV (1h)
+	•	Moyenne glissante vent (1h)
+
+Capteurs avancés :
+	•	sensor.pool_dynamic_target
+	•	sensor.pool_minimum_target
+	•	sensor.pool_time_remaining_window
+	•	sensor.pool_delay_status (à l’heure / en retard)
+
+⸻
+
+5. Logique métier
+
+5.1 Calcul du besoin minimal journalier
+
+H_min = clamp(T_eau_moy_3h / 2 ; 2 ; 16)
+
+Ce minimum :
+	•	Ne peut jamais diminuer dans la journée
+	•	Sert de garde-fou de base
+
+⸻
+
+5.2 Calcul dynamique
+
+H_dyn = clamp(
+    T_eau_moy_3h / 2
+    + 0.20 × max(UV_moy_1h - 3, 0)
+    + 0.04 × max(Vent_moy_1h - 15, 0)
+    + 0.12 × max(T_air_moy_3h - 26, 0)
+; 2 ; 18)
+
+
+⸻
+
+5.3 Objectif journalier
+
+H_target = max(H_target_previous, H_min, H_dyn)
+
+Contraintes :
+	•	Ne peut jamais diminuer
+	•	Réévalué toutes les 10 à 15 minutes
+
+⸻
+
+5.4 Compteur journalier
+
+Le système doit suivre :
+	•	Temps ON cumulé sur la journée
+	•	Reset automatique à heure configurable (par défaut : 00:00)
+
+⸻
+
+6. Fenêtre de filtration prioritaire
+
+6.1 Définition
+
+Basée sur le zénith solaire :
+
+Début = zénith - 4h
+Fin = zénith + 4h
+
+Ajustable dynamiquement selon saison.
+
+⸻
+
+6.2 Priorité
+	•	Filtration prioritaire dans cette fenêtre
+	•	Hors fenêtre : fonctionnement uniquement si nécessaire
+
+⸻
+
+7. Logique de décision ON/OFF
+
+La pompe doit être activée si au moins une condition est remplie :
+
+Condition 1 — Fenêtre active
+
+Dans fenêtre prioritaire ET H_remaining > 0
+
+Condition 2 — Retard critique
+
+H_remaining > temps_restant_fenêtre
+
+Condition 3 — Rattrapage fin de journée
+
+Heure > seuil ET H_done < H_min
+
+
+⸻
+
+8. Garde-fous obligatoires
+
+8.1 Anti-cycle court
+	•	ON minimum : 30 min
+	•	OFF minimum : 15 min
+
+8.2 Plages horaires autorisées
+	•	Par défaut : 06h → 23h
+	•	Override possible en cas de rattrapage
+
+8.3 Plafond
+	•	Maximum : 18 h/jour (hors mode forcé)
+
+8.4 Anti-régression
+	•	H_target ne diminue jamais
+
+⸻
+
+9. Mode hivernage
+
+9.1 Activation
+	•	Via un switch (entité créée par l’intégration)
+
+9.2 Logique
+
+Objectif : éviter gel et stagnation
+
+Condition de déclenchement :
+
+T_air <= 0°C OU T_eau <= 5°C
+
+Comportement :
+	•	Activation périodique de la pompe
+	•	Ex : 1 cycle toutes les X heures (configurable)
+
+Recommandation V1 :
+	•	1h toutes les 4h si gel
+	•	sinon 2h/jour
+
+⸻
+
+10. Fréquence de mise à jour
+	•	Calcul logique : toutes les 10 minutes
+	•	Moyennes glissantes mises à jour dynamiquement
+	•	Décision ON/OFF recalculée à chaque cycle
+
+⸻
+
+11. Architecture technique
+
+11.1 Type d’intégration
+	•	Custom component Home Assistant
+	•	Compatible HACS
+
+11.2 Modules attendus
+	•	sensor.py → capteurs calculés
+	•	switch.py → contrôle logique
+	•	coordinator.py → gestion des données
+	•	config_flow.py → configuration utilisateur
+	•	const.py → constantes
+
+⸻
+
+12. Exigences de robustesse
+	•	Fonctionnement même avec capteurs intermittents
+	•	Valeurs fallback si capteur indisponible
+	•	Logs clairs et exploitables
+	•	Tolérance aux données aberrantes
+
+⸻
+
+13. Évolutions futures
+	•	Intégration capteurs pH / ORP
+	•	Détection de fréquentation piscine
+	•	Apprentissage automatique
+	•	Optimisation énergétique (heures creuses)
+
+⸻
+
+14. Critères de succès
+
+Le système est considéré comme réussi si :
+	•	Aucun réglage manuel nécessaire après installation
+	•	Adaptation visible aux conditions météo
+	•	Pas de sous-filtration observée
+	•	Pas de surconsommation excessive
+	•	Fonctionnement stable sur plusieurs semaines
+
+⸻
+
+15. Résumé stratégique
+
+Le produit doit être :
+	•	Simple à installer
+	•	Complexe dans sa logique interne
+	•	Robuste aux erreurs capteurs
+	•	Compréhensible dans ses décisions
+
+Ce n’est pas une automatisation.
+C’est un système de pilotage autonome.
+
+⸻
