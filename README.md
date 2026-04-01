@@ -212,10 +212,31 @@ La pompe tourne 1 h toutes les 4 h (durée et intervalle configurables).
 L'objectif est de maintenir l'eau en mouvement pour éviter le gel des tuyaux.
 
 **Si hiver sans gel** :
-La pompe tourne 2 h par jour, réparties librement.
-Suffit à éviter la stagnation et le développement bactérien.
+La pompe reste **complètement éteinte**.
+En hivernage, aucun besoin de filtration hors période de gel.
 
-La détection de gel se fait sur la température **actuelle** (non lissée) pour réagir rapidement.
+La détection de gel se fait sur la température **actuelle** (non lissée) pour réagir immédiatement.
+
+### Mode éco
+
+Activé manuellement via `switch.pool_filtration_eco_mode`. Fonctionne par-dessus la logique normale : le besoin journalier (`H_target`) reste inchangé, seule la **répartition temporelle** change.
+
+**Principe** : une partie de la filtration est déplacée vers les heures creuses.
+
+```
+H_day_min = max(60 % × H_target ; 3 h)   ← obligatoirement réalisé en fenêtre solaire
+H_shiftable = H_target − H_day_min        ← peut être déplacé en heures creuses
+```
+
+En fenêtre solaire, la pompe assure d'abord `H_day_min` (priorité absolue). Le temps restant (`H_shiftable`) est décalé vers les heures creuses configurées.
+
+**Suspension automatique** si l'une des conditions suivantes est vraie :
+- Retard critique en cours
+- T_eau > 28 °C
+- UV moyen > 6
+- Minimum diurne progressif non atteint en fenêtre solaire
+
+Dans ces cas, le système revient automatiquement au comportement normal jusqu'à ce que les conditions redeviennent favorables.
 
 ---
 
@@ -259,7 +280,7 @@ La détection de gel se fait sur la température **actuelle** (non lissée) pour
 | Entité | Description |
 |--------|-------------|
 | `sensor.pool_decision_reason` | Pourquoi la pompe tourne (ou non) |
-| `sensor.pool_system_state` | État global : normal / catching_up / winter / idle / degraded |
+| `sensor.pool_system_state` | État global : normal / catching_up / winter / eco / idle / degraded |
 | `sensor.pool_delay_status` | À l'heure / En retard |
 | `sensor.pool_time_remaining_window` | Temps restant dans la fenêtre solaire (h) |
 
@@ -274,11 +295,21 @@ La détection de gel se fait sur la température **actuelle** (non lissée) pour
 | `sensor.pool_uv_avg_1h` | Moyenne glissante UV (1 h) |
 | `sensor.pool_wind_avg_1h` | Moyenne glissante vent (1 h) |
 
-### Switch
+### Capteurs éco
+
+| Entité | Description |
+|--------|-------------|
+| `sensor.pool_eco_shiftable_hours` | H_shiftable : heures déplaçables en HC (h) |
+| `sensor.pool_eco_remaining_shiftable` | Heures déplaçables restantes à faire en HC (h) |
+| `sensor.pool_eco_allowed` | Mode éco actif ou suspendu |
+| `sensor.pool_current_tariff` | Tarif actuel : HC (heures creuses) ou HP (heures pleines) |
+
+### Switchs
 
 | Entité | Description |
 |--------|-------------|
 | `switch.pool_winter_mode` | Activer le mode hivernage |
+| `switch.pool_filtration_eco_mode` | Activer le mode éco |
 
 ---
 
@@ -288,8 +319,27 @@ Activé via `switch.pool_winter_mode`.
 
 | Condition | Comportement |
 |-----------|--------------|
-| T_air ≤ 0 °C **ou** T_eau ≤ 5 °C | 1 h toutes les 4 h (configurable) |
-| Hiver sans gel | 2 h / jour |
+| T_air ≤ 0 °C **ou** T_eau ≤ 5 °C | Cycles anti-gel : 1 h toutes les 4 h (configurable) |
+| Hiver sans gel | Pompe **éteinte** (veille hivernage) |
+
+---
+
+## Mode éco
+
+Activé via `switch.pool_filtration_eco_mode`.
+
+Configurer les heures creuses dans **Paramètres → Intégrations → Pool Filtration → Configurer** :
+
+| Option | Description |
+|--------|-------------|
+| Début HC / Fin HC | Plage horaire fixe (ex : 22h → 6h) |
+| Binary sensor HC | `binary_sensor` externe — prend la priorité sur la plage fixe |
+
+Le mode éco est automatiquement suspendu (comportement normal) si :
+- T_eau > 28 °C
+- UV moyen > 6
+- Retard critique (plus de temps restant que de fenêtre disponible)
+- Minimum diurne progressif non atteint en fenêtre solaire
 
 ---
 
@@ -322,10 +372,13 @@ La pompe tourne ~13h36, réparties autour du midi solaire, avec rattrapage autom
 
 Accessibles via **Paramètres → Intégrations → Pool Filtration → Configurer** :
 
-| Option | Défaut |
-|--------|--------|
-| Heure de remise à zéro | 00:00 |
-| Heure de début autorisée | 06:00 |
-| Heure de fin autorisée | 23:00 |
-| Intervalle cycle hivernage | 4 h |
-| Durée cycle hivernage | 60 min |
+| Option | Défaut | Description |
+|--------|--------|-------------|
+| Heure de remise à zéro | 00:00 | Reset quotidien des compteurs |
+| Heure de début autorisée | 06h | Aucune commande de pompe avant cette heure |
+| Heure de fin autorisée | 23h | Aucune commande de pompe après cette heure |
+| Intervalle cycle hivernage | 4 h | Temps entre deux cycles anti-gel |
+| Durée cycle hivernage | 60 min | Durée de chaque cycle anti-gel |
+| Début heures creuses | — | Heure de début HC (option A) |
+| Fin heures creuses | — | Heure de fin HC (option A, supporte la nuit) |
+| Binary sensor HC | — | Entité `binary_sensor` indiquant les HC (option B, prioritaire) |

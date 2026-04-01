@@ -10,7 +10,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.storage import Store
 from homeassistant.helpers.sun import get_astral_location
-from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
+from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.util import dt as dt_util
 
 from .const import (
@@ -225,15 +225,12 @@ class PoolFiltrationCoordinator(DataUpdateCoordinator):
         # ── Pump decision ────────────────────────────────────────────────
         pump_should_be_on, decision_reason = self._decide(
             now=now,
-            pump_is_on=pump_is_on,
             h_remaining=h_remaining,
             in_window=in_window,
             time_remaining_window=time_remaining_window,
             window_end=window_end,
-            water_temp=water_temp,
             frost_condition=frost_condition,
             eco_allowed=eco_allowed,
-            h_done_day=self._h_done_day,
             h_day_min=h_day_min,
             h_shiftable_remaining=h_shiftable_remaining,
             is_off_peak=is_off_peak,
@@ -321,15 +318,12 @@ class PoolFiltrationCoordinator(DataUpdateCoordinator):
     def _decide(
         self,
         now: datetime,
-        pump_is_on: bool,
         h_remaining: float,
         in_window: bool,
         time_remaining_window: float,
         window_end: datetime,
-        water_temp: float,
         frost_condition: bool,
         eco_allowed: bool,
-        h_done_day: float,
         h_day_min: float,
         h_shiftable_remaining: float,
         is_off_peak: bool,
@@ -343,8 +337,7 @@ class PoolFiltrationCoordinator(DataUpdateCoordinator):
         # Eco mode (only when eco_allowed; otherwise fall through to normal logic)
         if eco_allowed:
             return self._decide_eco(
-                now, h_remaining, in_window, time_remaining_window,
-                window_end, h_done_day, h_day_min, h_shiftable_remaining, is_off_peak,
+                now, h_remaining, window_end, h_shiftable_remaining, is_off_peak,
             )
 
         # ── Normal mode ──────────────────────────────────────────────────
@@ -404,11 +397,7 @@ class PoolFiltrationCoordinator(DataUpdateCoordinator):
         self,
         now: datetime,
         h_remaining: float,
-        in_window: bool,
-        time_remaining_window: float,
         window_end: datetime,
-        h_done_day: float,
-        h_day_min: float,
         h_shiftable_remaining: float,
         is_off_peak: bool,
     ) -> tuple[bool, str]:
@@ -626,10 +615,6 @@ class PoolFiltrationCoordinator(DataUpdateCoordinator):
     # Sensor helpers
     # ------------------------------------------------------------------
 
-    def _read_state(self, conf_key: str, fallback: float) -> float:
-        value, _ = self._read_state_with_flag(conf_key, fallback)
-        return value
-
     def _read_state_with_flag(self, conf_key: str, fallback: float) -> tuple[float, bool]:
         """Return (value, is_degraded). is_degraded=True when fallback was used."""
         entity_id = self.config_entry.data.get(conf_key)
@@ -647,10 +632,6 @@ class PoolFiltrationCoordinator(DataUpdateCoordinator):
                 entity_id, state.state, fallback,
             )
             return fallback, True
-
-    def _read_wind(self) -> float:
-        value, _ = self._read_wind_with_flag()
-        return value
 
     def _read_wind_with_flag(self) -> tuple[float, bool]:
         """Read wind speed, optionally taking max with gust sensor."""
