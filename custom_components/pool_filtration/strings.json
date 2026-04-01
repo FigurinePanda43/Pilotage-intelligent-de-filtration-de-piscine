@@ -1,0 +1,88 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Pool Filtration – Entity Selection",
+        "description": "Select the entities used to control your pool filtration system.",
+        "data": {
+          "pump_switch": "Pump switch",
+          "water_temp_sensor": "Water temperature sensor",
+          "air_temp_sensor": "Outdoor air temperature sensor",
+          "uv_sensor": "UV index sensor",
+          "wind_sensor": "Wind speed sensor",
+          "wind_gust_sensor": "Wind gust sensor (optional)"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Failed to connect",
+      "unknown": "Unexpected error"
+    },
+    "abort": {
+      "already_configured": "Integration already configured"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Pool Filtration – Settings",
+        "data": {
+          "reset_time": "Daily counter reset time",
+          "allowed_start": "Earliest allowed start hour",
+          "allowed_end": "Latest allowed stop hour",
+          "winter_cycle_hours": "Winter cycle interval (hours)",
+          "winter_run_minutes": "Winter cycle run duration (minutes)"
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "filtration_target_hours": {
+        "name": "Filtration target"
+      },
+      "filtration_done_hours": {
+        "name": "Filtration done"
+      },
+      "filtration_remaining_hours": {
+        "name": "Filtration remaining"
+      },
+      "filtration_status": {
+        "name": "Filtration status"
+      },
+      "water_temp_avg_3h": {
+        "name": "Water temp (3 h avg)"
+      },
+      "air_temp_avg_3h": {
+        "name": "Air temp (3 h avg)"
+      },
+      "uv_avg_1h": {
+        "name": "UV index (1 h avg)"
+      },
+      "wind_avg_1h": {
+        "name": "Wind speed (1 h avg)"
+      },
+      "dynamic_target": {
+        "name": "Dynamic target"
+      },
+      "minimum_target": {
+        "name": "Minimum target"
+      },
+      "time_remaining_window": {
+        "name": "Time left in solar window"
+      },
+      "delay_status": {
+        "name": "Schedule status",
+        "state": {
+          "on_time": "On time",
+          "late": "Behind schedule"
+        }
+      }
+    },
+    "switch": {
+      "winter_mode": {
+        "name": "Winter mode"
+      }
+    }
+  }
+}

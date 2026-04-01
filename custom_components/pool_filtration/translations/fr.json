@@ -1,0 +1,88 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Filtration piscine – Sélection des entités",
+        "description": "Sélectionnez les entités permettant de piloter votre système de filtration.",
+        "data": {
+          "pump_switch": "Interrupteur de la pompe",
+          "water_temp_sensor": "Capteur température eau",
+          "air_temp_sensor": "Capteur température extérieure",
+          "uv_sensor": "Capteur UV",
+          "wind_sensor": "Capteur vitesse du vent",
+          "wind_gust_sensor": "Capteur rafales de vent (optionnel)"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Connexion impossible",
+      "unknown": "Erreur inattendue"
+    },
+    "abort": {
+      "already_configured": "Intégration déjà configurée"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Filtration piscine – Paramètres",
+        "data": {
+          "reset_time": "Heure de remise à zéro quotidienne",
+          "allowed_start": "Heure de début autorisée",
+          "allowed_end": "Heure de fin autorisée",
+          "winter_cycle_hours": "Intervalle entre cycles hivernage (heures)",
+          "winter_run_minutes": "Durée d'un cycle hivernage (minutes)"
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "filtration_target_hours": {
+        "name": "Objectif filtration"
+      },
+      "filtration_done_hours": {
+        "name": "Filtration effectuée"
+      },
+      "filtration_remaining_hours": {
+        "name": "Filtration restante"
+      },
+      "filtration_status": {
+        "name": "État filtration"
+      },
+      "water_temp_avg_3h": {
+        "name": "Temp. eau (moy. 3 h)"
+      },
+      "air_temp_avg_3h": {
+        "name": "Temp. air (moy. 3 h)"
+      },
+      "uv_avg_1h": {
+        "name": "UV (moy. 1 h)"
+      },
+      "wind_avg_1h": {
+        "name": "Vent (moy. 1 h)"
+      },
+      "dynamic_target": {
+        "name": "Objectif dynamique"
+      },
+      "minimum_target": {
+        "name": "Objectif minimal"
+      },
+      "time_remaining_window": {
+        "name": "Temps restant fenêtre solaire"
+      },
+      "delay_status": {
+        "name": "Statut du planning",
+        "state": {
+          "on_time": "À l'heure",
+          "late": "En retard"
+        }
+      }
+    },
+    "switch": {
+      "winter_mode": {
+        "name": "Mode hivernage"
+      }
+    }
+  }
+}

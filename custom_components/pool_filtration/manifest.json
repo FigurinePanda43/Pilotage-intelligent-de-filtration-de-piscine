@@ -1,0 +1,11 @@
+{
+  "domain": "pool_filtration",
+  "name": "Pool Filtration",
+  "version": "1.0.0",
+  "codeowners": ["@figurinepanda43"],
+  "config_flow": true,
+  "dependencies": ["sun"],
+  "documentation": "https://github.com/figurinepanda43/pilotage-intelligent-de-filtration-de-piscine",
+  "iot_class": "local_polling",
+  "requirements": []
+}
