@@ -77,6 +77,31 @@
           "on_time": "À l'heure",
           "late": "En retard"
         }
+      },
+      "decision_reason": {
+        "name": "Raison de la décision",
+        "state": {
+          "solar_window": "Fenêtre solaire",
+          "catching_up_delay": "Rattrapage – retard",
+          "end_of_day_catchup": "Rattrapage fin de journée",
+          "target_reached": "Objectif atteint",
+          "daily_limit_reached": "Limite journalière atteinte",
+          "outside_hours": "Hors plage horaire",
+          "idle": "En attente",
+          "winter_frost_cycle": "Hivernage – cycle gel",
+          "winter_daily_limit": "Hivernage – limite journalière",
+          "winter_complete": "Hivernage – terminé"
+        }
+      },
+      "system_state": {
+        "name": "État du système",
+        "state": {
+          "normal": "Normal",
+          "catching_up": "Rattrapage en cours",
+          "winter": "Mode hivernage",
+          "idle": "En attente",
+          "degraded": "Dégradé (capteur indisponible)"
+        }
       }
     },
     "switch": {

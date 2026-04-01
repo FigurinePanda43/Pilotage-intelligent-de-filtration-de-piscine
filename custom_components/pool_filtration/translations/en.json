@@ -77,6 +77,31 @@
           "on_time": "On time",
           "late": "Behind schedule"
         }
+      },
+      "decision_reason": {
+        "name": "Decision reason",
+        "state": {
+          "solar_window": "Solar window",
+          "catching_up_delay": "Catching up – delay",
+          "end_of_day_catchup": "End-of-day catch-up",
+          "target_reached": "Target reached",
+          "daily_limit_reached": "Daily limit reached",
+          "outside_hours": "Outside allowed hours",
+          "idle": "Idle",
+          "winter_frost_cycle": "Winter – frost cycle",
+          "winter_daily_limit": "Winter – daily limit",
+          "winter_complete": "Winter – complete"
+        }
+      },
+      "system_state": {
+        "name": "System state",
+        "state": {
+          "normal": "Normal",
+          "catching_up": "Catching up",
+          "winter": "Winter mode",
+          "idle": "Idle",
+          "degraded": "Degraded (sensor unavailable)"
+        }
       }
     },
     "switch": {

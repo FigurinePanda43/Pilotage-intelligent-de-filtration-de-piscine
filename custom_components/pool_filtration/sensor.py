@@ -131,6 +131,16 @@ SENSORS: tuple[PoolSensorDescription, ...] = (
         translation_key="delay_status",
         value_fn=lambda d: d["delay_status"],
     ),
+    PoolSensorDescription(
+        key="decision_reason",
+        translation_key="decision_reason",
+        value_fn=lambda d: d["decision_reason"],
+    ),
+    PoolSensorDescription(
+        key="system_state",
+        translation_key="system_state",
+        value_fn=lambda d: d["system_state"],
+    ),
 )
 
 

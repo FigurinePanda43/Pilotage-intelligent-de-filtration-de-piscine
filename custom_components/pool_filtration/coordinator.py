@@ -130,10 +130,11 @@ class PoolFiltrationCoordinator(DataUpdateCoordinator):
         self._check_daily_reset(now)
 
         # Read raw sensor values (with fallbacks for unavailable sensors)
-        water_temp = self._read_state(CONF_WATER_TEMP, FALLBACK_WATER_TEMP)
-        air_temp = self._read_state(CONF_AIR_TEMP, FALLBACK_AIR_TEMP)
-        uv = self._read_state(CONF_UV_SENSOR, FALLBACK_UV)
-        wind = self._read_wind(air_temp)
+        water_temp, wt_degraded = self._read_state_with_flag(CONF_WATER_TEMP, FALLBACK_WATER_TEMP)
+        air_temp, at_degraded = self._read_state_with_flag(CONF_AIR_TEMP, FALLBACK_AIR_TEMP)
+        uv, uv_degraded = self._read_state_with_flag(CONF_UV_SENSOR, FALLBACK_UV)
+        wind, wind_degraded = self._read_wind_with_flag()
+        degraded = wt_degraded or at_degraded or uv_degraded or wind_degraded
 
         # Update rolling averages
         self._push(self._water_temp_history, now, water_temp, WATER_TEMP_AVG_HOURS)
@@ -181,7 +182,7 @@ class PoolFiltrationCoordinator(DataUpdateCoordinator):
             air_temp <= WINTER_AIR_TEMP_THRESHOLD
             or water_temp <= WINTER_WATER_TEMP_THRESHOLD
         )
-        pump_should_be_on = self._decide(
+        pump_should_be_on, decision_reason = self._decide(
             now=now,
             pump_is_on=pump_is_on,
             h_remaining=h_remaining,
@@ -191,6 +192,11 @@ class PoolFiltrationCoordinator(DataUpdateCoordinator):
             water_temp=water_temp,
             air_temp=air_temp,
             frost_condition=frost_condition,
+        )
+
+        # System-level state (for dashboard / diagnostics)
+        system_state = self._compute_system_state(
+            pump_should_be_on, decision_reason, degraded
         )
 
         # Apply decision to physical switch
@@ -226,9 +232,13 @@ class PoolFiltrationCoordinator(DataUpdateCoordinator):
             "pump_is_on": pump_is_on,
             "pump_should_be_on": pump_should_be_on,
             "delay_status": delay_status,
+            "decision_reason": decision_reason,
+            "system_state": system_state,
             # Winter
             "winter_mode": self._winter_mode,
             "frost_condition": frost_condition,
+            # Diagnostics
+            "degraded": degraded,
         }
 
     # ------------------------------------------------------------------
@@ -271,17 +281,19 @@ class PoolFiltrationCoordinator(DataUpdateCoordinator):
         water_temp: float,
         air_temp: float,
         frost_condition: bool,
-    ) -> bool:
-        """Return True if the pump should be running."""
+    ) -> tuple[bool, str]:
+        """Return (should_run, reason) for pump decision."""
 
         # --- Winter mode overrides normal logic ---
         if self._winter_mode:
             return self._decide_winter(now, pump_is_on, frost_condition)
 
         # --- Normal mode ---
-        # Hard limit
         if self._h_done >= MAX_FILTRATION_HOURS:
-            return False
+            return False, "daily_limit_reached"
+
+        if h_remaining <= 0:
+            return False, "target_reached"
 
         allowed_start, allowed_end = self._allowed_hours()
         current_hour = now.hour
@@ -296,42 +308,47 @@ class PoolFiltrationCoordinator(DataUpdateCoordinator):
         cond3 = now >= window_end and self._h_done < self._h_target
 
         if not (cond1 or cond2 or cond3):
-            return False
+            return False, "idle"
 
         # Enforce allowed time window (can be overridden by catch-up need)
         inside_allowed = allowed_start <= current_hour < allowed_end
         if not inside_allowed and not cond3:
-            return False
+            return False, "outside_hours"
 
-        return True
+        # Determine the most specific active reason
+        if cond3:
+            return True, "end_of_day_catchup"
+        if cond2:
+            return True, "catching_up_delay"
+        return True, "solar_window"
 
     def _decide_winter(
         self, now: datetime, pump_is_on: bool, frost_condition: bool
-    ) -> bool:
+    ) -> tuple[bool, str]:
         """Winter mode decision."""
         opts = self.config_entry.options
         cycle_hours = int(opts.get(CONF_WINTER_CYCLE_HOURS, DEFAULT_WINTER_CYCLE_HOURS))
         run_minutes = int(opts.get(CONF_WINTER_RUN_MINUTES, DEFAULT_WINTER_RUN_MINUTES))
 
         if frost_condition:
-            # Cycle-based: run `run_minutes` every `cycle_hours` hours
             if self._last_winter_cycle is None:
-                return True  # First ever cycle
+                return True, "winter_frost_cycle"
 
             elapsed_since_cycle_start = (
                 now - self._last_winter_cycle
             ).total_seconds() / 60.0
 
             if elapsed_since_cycle_start <= run_minutes:
-                return True  # Still within run window
+                return True, "winter_frost_cycle"
 
             if elapsed_since_cycle_start >= cycle_hours * 60.0:
-                return True  # Time for a new cycle
+                return True, "winter_frost_cycle"
 
-            return False
+            return False, "winter_frost_cycle"
         else:
-            # No frost: just limit to WINTER_NO_FROST_DAILY_HOURS per day
-            return self._h_done < WINTER_NO_FROST_DAILY_HOURS
+            if self._h_done < WINTER_NO_FROST_DAILY_HOURS:
+                return True, "winter_daily_limit"
+            return False, "winter_complete"
 
     # ------------------------------------------------------------------
     # Pump control
@@ -459,39 +476,77 @@ class PoolFiltrationCoordinator(DataUpdateCoordinator):
             return now.replace(hour=13, minute=0, second=0, microsecond=0)
 
     # ------------------------------------------------------------------
+    # System state
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _compute_system_state(
+        pump_should_be_on: bool, reason: str, degraded: bool
+    ) -> str:
+        """High-level system state for dashboard display."""
+        if degraded:
+            return "degraded"
+        if reason.startswith("winter"):
+            return "winter"
+        if reason in ("catching_up_delay", "end_of_day_catchup"):
+            return "catching_up"
+        if pump_should_be_on:
+            return "normal"
+        return "idle"
+
+    # ------------------------------------------------------------------
     # Sensor helpers
     # ------------------------------------------------------------------
 
     def _read_state(self, conf_key: str, fallback: float) -> float:
+        value, _ = self._read_state_with_flag(conf_key, fallback)
+        return value
+
+    def _read_state_with_flag(self, conf_key: str, fallback: float) -> tuple[float, bool]:
+        """Return (value, is_degraded). is_degraded=True when fallback was used."""
         entity_id = self.config_entry.data.get(conf_key)
         if not entity_id:
-            return fallback
-        return self._float_state(entity_id, fallback)
-
-    def _read_wind(self, air_temp: float) -> float:
-        """Read wind speed, optionally taking max with gust sensor."""
-        wind = self._read_state(CONF_WIND_SENSOR, FALLBACK_WIND)
-        gust_entity = self.config_entry.data.get(CONF_WIND_GUST_SENSOR)
-        if gust_entity:
-            gust = self._float_state(gust_entity, FALLBACK_WIND)
-            wind = max(wind, gust)
-        return wind
-
-    def _float_state(self, entity_id: str, fallback: float) -> float:
+            return fallback, False  # sensor not configured, not degraded
         state = self.hass.states.get(entity_id)
         if state is None or state.state in ("unavailable", "unknown", ""):
             _LOGGER.debug("Entity %s unavailable, using fallback %.1f", entity_id, fallback)
-            return fallback
+            return fallback, True
         try:
-            return float(state.state)
+            return float(state.state), False
         except ValueError:
             _LOGGER.debug(
                 "Entity %s has non-numeric state %r, using fallback %.1f",
-                entity_id,
-                state.state,
-                fallback,
+                entity_id, state.state, fallback,
             )
-            return fallback
+            return fallback, True
+
+    def _read_wind(self) -> float:
+        value, _ = self._read_wind_with_flag()
+        return value
+
+    def _read_wind_with_flag(self) -> tuple[float, bool]:
+        """Read wind speed, optionally taking max with gust sensor."""
+        wind, degraded = self._read_state_with_flag(CONF_WIND_SENSOR, FALLBACK_WIND)
+        gust_entity = self.config_entry.data.get(CONF_WIND_GUST_SENSOR)
+        if gust_entity:
+            gust, gust_degraded = self._float_state_with_flag(gust_entity, FALLBACK_WIND)
+            wind = max(wind, gust)
+            degraded = degraded or gust_degraded
+        return wind, degraded
+
+    def _float_state_with_flag(self, entity_id: str, fallback: float) -> tuple[float, bool]:
+        state = self.hass.states.get(entity_id)
+        if state is None or state.state in ("unavailable", "unknown", ""):
+            _LOGGER.debug("Entity %s unavailable, using fallback %.1f", entity_id, fallback)
+            return fallback, True
+        try:
+            return float(state.state), False
+        except ValueError:
+            _LOGGER.debug(
+                "Entity %s has non-numeric state %r, using fallback %.1f",
+                entity_id, state.state, fallback,
+            )
+            return fallback, True
 
     # ------------------------------------------------------------------
     # Rolling average helpers
