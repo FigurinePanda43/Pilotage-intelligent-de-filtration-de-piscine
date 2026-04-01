@@ -28,8 +28,7 @@ from .const import (
     CONF_ALLOWED_END,
     CONF_WINTER_CYCLE_HOURS,
     CONF_WINTER_RUN_MINUTES,
-    CONF_ECO_OFF_PEAK_START,
-    CONF_ECO_OFF_PEAK_END,
+    CONF_ECO_OFF_PEAK_SLOTS,
     CONF_ECO_OFF_PEAK_SENSOR,
     DEFAULT_RESET_TIME,
     DEFAULT_ALLOWED_START,
@@ -471,7 +470,10 @@ class PoolFiltrationCoordinator(DataUpdateCoordinator):
 
     async def _set_pump(self, turn_on: bool) -> None:
         """Call HA service to change pump switch state."""
-        entity_id = self.config_entry.data[CONF_PUMP_SWITCH]
+        entity_id = self._get_entity(CONF_PUMP_SWITCH)
+        if not entity_id:
+            _LOGGER.error("Pool pump switch entity not configured — cannot control pump")
+            return
         service = "turn_on" if turn_on else "turn_off"
         try:
             await self.hass.services.async_call(
@@ -489,7 +491,9 @@ class PoolFiltrationCoordinator(DataUpdateCoordinator):
     # ------------------------------------------------------------------
 
     def _read_pump_state(self) -> bool:
-        entity_id = self.config_entry.data[CONF_PUMP_SWITCH]
+        entity_id = self._get_entity(CONF_PUMP_SWITCH)
+        if not entity_id:
+            return False
         state = self.hass.states.get(entity_id)
         if state is None:
             return False
@@ -579,37 +583,69 @@ class PoolFiltrationCoordinator(DataUpdateCoordinator):
         return "idle"
 
     def _is_off_peak(self, now: datetime) -> bool:
-        """Return True when the current time is in off-peak (heures creuses) period.
+        """Return True when the current time is in an off-peak (heures creuses) slot.
 
-        Priority: binary_sensor (Option B) > fixed hours (Option A).
-        If neither is configured, always returns False (eco mode has no effect).
+        Priority order:
+          1. binary_sensor (Option B) – real-time signal from the grid provider
+          2. Multi-slot text string (Option A) – "HH:MM-HH:MM,HH:MM-HH:MM,..."
+        If neither is configured, returns False (eco mode has no effect).
         """
         opts = self.config_entry.options
 
-        # Option B – binary sensor
+        # ── Option B: binary sensor ─────────────────────────────────────
         sensor_id = opts.get(CONF_ECO_OFF_PEAK_SENSOR)
         if sensor_id:
             state = self.hass.states.get(sensor_id)
             if state is not None and state.state not in ("unavailable", "unknown"):
                 return state.state == "on"
 
-        # Option A – fixed hours
-        raw_start = opts.get(CONF_ECO_OFF_PEAK_START)
-        raw_end = opts.get(CONF_ECO_OFF_PEAK_END)
-        if raw_start is None or raw_end is None:
+        # ── Option A: multi-slot string ─────────────────────────────────
+        slots_str: str = opts.get(CONF_ECO_OFF_PEAK_SLOTS, "")
+        if not slots_str:
             return False
 
-        try:
-            start = int(raw_start)
-            end = int(raw_end)
-        except (ValueError, TypeError):
-            return False
+        current_min = now.hour * 60 + now.minute
 
-        current_hour = now.hour
-        if start <= end:
-            return start <= current_hour < end
-        # Overnight window (e.g. 22 → 06)
-        return current_hour >= start or current_hour < end
+        for raw_slot in slots_str.split(","):
+            slot = raw_slot.strip()
+            if not slot:
+                continue
+            try:
+                start_part, end_part = slot.split("-", 1)
+                sh, sm = (int(x) for x in start_part.strip().split(":"))
+                eh, em = (int(x) for x in end_part.strip().split(":"))
+                start_min = sh * 60 + sm
+                end_min = eh * 60 + em
+            except (ValueError, AttributeError):
+                _LOGGER.debug("Invalid off-peak slot %r — skipping", slot)
+                continue
+
+            if start_min <= end_min:
+                # Same-day window (e.g. 12:00-14:00)
+                if start_min <= current_min < end_min:
+                    return True
+            else:
+                # Overnight window (e.g. 22:00-06:00)
+                if current_min >= start_min or current_min < end_min:
+                    return True
+
+        return False
+
+    # ------------------------------------------------------------------
+    # Entity resolution (options override > original config data)
+    # ------------------------------------------------------------------
+
+    def _get_entity(self, conf_key: str) -> str | None:
+        """Return the entity ID for a conf key.
+
+        Options take priority so users can change sensors without
+        re-running the initial config flow.  Empty strings in options
+        are treated as «not set» and fall back to the original data.
+        """
+        override = self.config_entry.options.get(conf_key)
+        if override:
+            return override
+        return self.config_entry.data.get(conf_key)
 
     # ------------------------------------------------------------------
     # Sensor helpers
@@ -617,7 +653,7 @@ class PoolFiltrationCoordinator(DataUpdateCoordinator):
 
     def _read_state_with_flag(self, conf_key: str, fallback: float) -> tuple[float, bool]:
         """Return (value, is_degraded). is_degraded=True when fallback was used."""
-        entity_id = self.config_entry.data.get(conf_key)
+        entity_id = self._get_entity(conf_key)
         if not entity_id:
             return fallback, False  # sensor not configured, not degraded
         state = self.hass.states.get(entity_id)
@@ -636,7 +672,7 @@ class PoolFiltrationCoordinator(DataUpdateCoordinator):
     def _read_wind_with_flag(self) -> tuple[float, bool]:
         """Read wind speed, optionally taking max with gust sensor."""
         wind, degraded = self._read_state_with_flag(CONF_WIND_SENSOR, FALLBACK_WIND)
-        gust_entity = self.config_entry.data.get(CONF_WIND_GUST_SENSOR)
+        gust_entity = self._get_entity(CONF_WIND_GUST_SENSOR)
         if gust_entity:
             gust, gust_degraded = self._float_state_with_flag(gust_entity, FALLBACK_WIND)
             wind = max(wind, gust)

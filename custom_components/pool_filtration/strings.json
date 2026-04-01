@@ -32,9 +32,14 @@
           "allowed_end": "Latest allowed stop hour",
           "winter_cycle_hours": "Winter cycle interval (hours)",
           "winter_run_minutes": "Winter cycle run duration (minutes)",
-          "eco_off_peak_start": "Off-peak start hour (Option A)",
-          "eco_off_peak_end": "Off-peak end hour (Option A)",
-          "eco_off_peak_sensor": "Off-peak binary sensor (Option B)"
+          "eco_off_peak_slots": "Off-peak time slots (Option A) — e.g. 22:00-06:00,12:00-14:00",
+          "eco_off_peak_sensor": "Off-peak binary sensor (Option B — takes priority)",
+          "pump_switch": "Pump switch (override)",
+          "water_temp_sensor": "Water temperature sensor (override)",
+          "air_temp_sensor": "Outdoor air temperature sensor (override)",
+          "uv_sensor": "UV index sensor (override)",
+          "wind_sensor": "Wind speed sensor (override)",
+          "wind_gust_sensor": "Wind gust sensor (override, optional)"
         }
       }
     }

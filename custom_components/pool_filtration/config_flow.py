@@ -21,8 +21,7 @@ from .const import (
     CONF_ALLOWED_END,
     CONF_WINTER_CYCLE_HOURS,
     CONF_WINTER_RUN_MINUTES,
-    CONF_ECO_OFF_PEAK_START,
-    CONF_ECO_OFF_PEAK_END,
+    CONF_ECO_OFF_PEAK_SLOTS,
     CONF_ECO_OFF_PEAK_SENSOR,
     DEFAULT_RESET_TIME,
     DEFAULT_ALLOWED_START,
@@ -32,6 +31,16 @@ from .const import (
 )
 
 _SLIDER = "slider"
+
+# Entity conf keys exposed in the options override section
+_ENTITY_KEYS = (
+    CONF_PUMP_SWITCH,
+    CONF_WATER_TEMP,
+    CONF_AIR_TEMP,
+    CONF_UV_SENSOR,
+    CONF_WIND_SENSOR,
+    CONF_WIND_GUST_SENSOR,
+)
 
 
 class PoolFiltrationConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
@@ -81,26 +90,26 @@ class PoolFiltrationConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         config_entry: config_entries.ConfigEntry,
     ) -> PoolFiltrationOptionsFlow:
         """Return the options flow."""
-        # Do NOT pass config_entry here – HA 2024.x+ sets it automatically as
-        # a read-only property on the OptionsFlow base class.  Passing it to
-        # __init__ and then assigning self.config_entry would raise
-        # AttributeError ("can't set attribute") on those versions.
+        # Do NOT pass config_entry — HA 2024.x+ exposes it as a read-only property.
         return PoolFiltrationOptionsFlow()
 
 
 class PoolFiltrationOptionsFlow(config_entries.OptionsFlow):
-    """Handle operational option updates."""
+    """Handle operational option updates and sensor overrides."""
 
-    # No __init__ override – self.config_entry is provided by the HA framework.
+    # No __init__ override – self.config_entry is injected by the HA framework.
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
     ) -> config_entries.FlowResult:
-        """Show the options form (general + winter + eco)."""
+        """Show the options form."""
         opts = self.config_entry.options
+        data = self.config_entry.data
 
         if user_input is not None:
-            return self.async_create_entry(title="", data=user_input)
+            # Strip empty strings so _get_entity() falls back to original data
+            cleaned = {k: v for k, v in user_input.items() if v not in (None, "")}
+            return self.async_create_entry(title="", data=cleaned)
 
         def _num(min_: int, max_: int, step: int = 1) -> selector.NumberSelector:
             return selector.NumberSelector(
@@ -108,6 +117,10 @@ class PoolFiltrationOptionsFlow(config_entries.OptionsFlow):
                     min=min_, max=max_, step=step, mode=_SLIDER
                 )
             )
+
+        def _cur_entity(key: str) -> str | None:
+            """Current entity: options override first, then original data."""
+            return opts.get(key) or data.get(key)
 
         schema = vol.Schema(
             {
@@ -137,16 +150,13 @@ class PoolFiltrationOptionsFlow(config_entries.OptionsFlow):
                         opts.get(CONF_WINTER_RUN_MINUTES, DEFAULT_WINTER_RUN_MINUTES)
                     ),
                 ): _num(10, 120, step=5),
-                # ── Eco mode – Option A (fixed hours) ──────────────────────
+                # ── Eco – heures creuses ────────────────────────────────────
                 vol.Optional(
-                    CONF_ECO_OFF_PEAK_START,
-                    description={"suggested_value": opts.get(CONF_ECO_OFF_PEAK_START)},
-                ): _num(0, 23),
-                vol.Optional(
-                    CONF_ECO_OFF_PEAK_END,
-                    description={"suggested_value": opts.get(CONF_ECO_OFF_PEAK_END)},
-                ): _num(0, 23),
-                # ── Eco mode – Option B (binary sensor) ────────────────────
+                    CONF_ECO_OFF_PEAK_SLOTS,
+                    description={
+                        "suggested_value": opts.get(CONF_ECO_OFF_PEAK_SLOTS, "")
+                    },
+                ): selector.TextSelector(selector.TextSelectorConfig()),
                 vol.Optional(
                     CONF_ECO_OFF_PEAK_SENSOR,
                     description={
@@ -154,6 +164,47 @@ class PoolFiltrationOptionsFlow(config_entries.OptionsFlow):
                     },
                 ): selector.EntitySelector(
                     selector.EntitySelectorConfig(domain="binary_sensor")
+                ),
+                # ── Capteurs – modifications ────────────────────────────────
+                vol.Optional(
+                    CONF_PUMP_SWITCH,
+                    description={"suggested_value": _cur_entity(CONF_PUMP_SWITCH)},
+                ): selector.EntitySelector(
+                    selector.EntitySelectorConfig(domain="switch")
+                ),
+                vol.Optional(
+                    CONF_WATER_TEMP,
+                    description={"suggested_value": _cur_entity(CONF_WATER_TEMP)},
+                ): selector.EntitySelector(
+                    selector.EntitySelectorConfig(
+                        domain="sensor", device_class="temperature"
+                    )
+                ),
+                vol.Optional(
+                    CONF_AIR_TEMP,
+                    description={"suggested_value": _cur_entity(CONF_AIR_TEMP)},
+                ): selector.EntitySelector(
+                    selector.EntitySelectorConfig(
+                        domain="sensor", device_class="temperature"
+                    )
+                ),
+                vol.Optional(
+                    CONF_UV_SENSOR,
+                    description={"suggested_value": _cur_entity(CONF_UV_SENSOR)},
+                ): selector.EntitySelector(
+                    selector.EntitySelectorConfig(domain="sensor")
+                ),
+                vol.Optional(
+                    CONF_WIND_SENSOR,
+                    description={"suggested_value": _cur_entity(CONF_WIND_SENSOR)},
+                ): selector.EntitySelector(
+                    selector.EntitySelectorConfig(domain="sensor")
+                ),
+                vol.Optional(
+                    CONF_WIND_GUST_SENSOR,
+                    description={"suggested_value": _cur_entity(CONF_WIND_GUST_SENSOR)},
+                ): selector.EntitySelector(
+                    selector.EntitySelectorConfig(domain="sensor")
                 ),
             }
         )

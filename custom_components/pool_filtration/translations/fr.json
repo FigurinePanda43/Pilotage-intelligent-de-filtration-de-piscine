@@ -27,9 +27,14 @@
           "allowed_end": "Heure de fin autorisée",
           "winter_cycle_hours": "Intervalle entre cycles hivernage (heures)",
           "winter_run_minutes": "Durée d'un cycle hivernage (minutes)",
-          "eco_off_peak_start": "Début des heures creuses (Option A)",
-          "eco_off_peak_end": "Fin des heures creuses (Option A)",
-          "eco_off_peak_sensor": "Binary sensor heures creuses (Option B)"
+          "eco_off_peak_slots": "Plages heures creuses (Option A) — ex : 22:00-06:00,12:00-14:00",
+          "eco_off_peak_sensor": "Binary sensor heures creuses (Option B — prioritaire)",
+          "pump_switch": "Interrupteur de la pompe (remplacement)",
+          "water_temp_sensor": "Capteur température eau (remplacement)",
+          "air_temp_sensor": "Capteur température extérieure (remplacement)",
+          "uv_sensor": "Capteur UV (remplacement)",
+          "wind_sensor": "Capteur vitesse du vent (remplacement)",
+          "wind_gust_sensor": "Capteur rafales de vent (remplacement, optionnel)"
         }
       }
     }

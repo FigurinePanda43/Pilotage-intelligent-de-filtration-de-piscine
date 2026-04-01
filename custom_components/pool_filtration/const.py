@@ -75,9 +75,8 @@ WINTER_NO_FROST_DAILY_HOURS = 0.0  # no frost in winter mode → pump stays OFF
 # ---------------------------------------------------------------------------
 # Eco mode
 # ---------------------------------------------------------------------------
-CONF_ECO_OFF_PEAK_START = "eco_off_peak_start"   # option A: integer hour 0-23
-CONF_ECO_OFF_PEAK_END = "eco_off_peak_end"       # option A: integer hour 0-23
-CONF_ECO_OFF_PEAK_SENSOR = "eco_off_peak_sensor" # option B: binary_sensor entity
+CONF_ECO_OFF_PEAK_SLOTS = "eco_off_peak_slots"   # option A: "HH:MM-HH:MM,HH:MM-HH:MM,..."
+CONF_ECO_OFF_PEAK_SENSOR = "eco_off_peak_sensor" # option B: binary_sensor (takes priority)
 
 ECO_DAY_MIN_RATIO = 0.6    # 60 % of H_target must be done during solar window
 ECO_DAY_MIN_HOURS = 3.0    # absolute floor for daytime minimum

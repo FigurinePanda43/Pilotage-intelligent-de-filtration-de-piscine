@@ -332,8 +332,18 @@ Configurer les heures creuses dans **Paramètres → Intégrations → Pool Filt
 
 | Option | Description |
 |--------|-------------|
-| Début HC / Fin HC | Plage horaire fixe (ex : 22h → 6h) |
-| Binary sensor HC | `binary_sensor` externe — prend la priorité sur la plage fixe |
+| Plages heures creuses | Une ou plusieurs plages au format `HH:MM-HH:MM` séparées par des virgules |
+| Binary sensor HC | `binary_sensor` externe — prend la priorité sur les plages configurées |
+
+**Format des plages heures creuses** — exemples :
+
+| Valeur | Signification |
+|--------|---------------|
+| `22:00-06:00` | Nuit (traversée de minuit automatiquement gérée) |
+| `22:00-06:00,12:00-14:00` | Nuit + pause de midi |
+| `01:00-07:00,14:00-17:00,22:30-06:30` | Trois plages dont deux traversant minuit |
+
+> Les plages peuvent se chevaucher. Une traversée de minuit est détectée automatiquement quand l'heure de fin est antérieure à l'heure de début.
 
 Le mode éco est automatiquement suspendu (comportement normal) si :
 - T_eau > 28 °C
@@ -379,6 +389,11 @@ Accessibles via **Paramètres → Intégrations → Pool Filtration → Configur
 | Heure de fin autorisée | 23h | Aucune commande de pompe après cette heure |
 | Intervalle cycle hivernage | 4 h | Temps entre deux cycles anti-gel |
 | Durée cycle hivernage | 60 min | Durée de chaque cycle anti-gel |
-| Début heures creuses | — | Heure de début HC (option A) |
-| Fin heures creuses | — | Heure de fin HC (option A, supporte la nuit) |
+| Plages heures creuses | — | Une ou plusieurs plages HC (option A) — voir format ci-dessous |
 | Binary sensor HC | — | Entité `binary_sensor` indiquant les HC (option B, prioritaire) |
+| Interrupteur pompe | — | Remplace l'entité sélectionnée lors de l'installation |
+| Capteur température eau | — | Remplace l'entité sélectionnée lors de l'installation |
+| Capteur température extérieure | — | Remplace l'entité sélectionnée lors de l'installation |
+| Capteur UV | — | Remplace l'entité sélectionnée lors de l'installation |
+| Capteur vitesse du vent | — | Remplace l'entité sélectionnée lors de l'installation |
+| Capteur rafales | — | Remplace l'entité sélectionnée lors de l'installation |
