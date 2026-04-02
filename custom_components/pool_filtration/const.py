@@ -92,6 +92,14 @@ FALLBACK_UV = 0.0
 FALLBACK_WIND = 0.0
 
 # ---------------------------------------------------------------------------
+# Busy mode (forte fréquentation)
+# ---------------------------------------------------------------------------
+CONF_BUSY_BOOST_DURATION = "busy_boost_duration"
+DEFAULT_BUSY_BOOST_DURATION = 2.0   # hours
+BUSY_BOOST_MIN_HOURS = 0.5
+BUSY_BOOST_MAX_HOURS = 6.0
+
+# ---------------------------------------------------------------------------
 # Persistent storage
 # ---------------------------------------------------------------------------
 STORAGE_VERSION = 1

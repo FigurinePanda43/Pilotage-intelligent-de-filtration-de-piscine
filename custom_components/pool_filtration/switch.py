@@ -21,6 +21,7 @@ async def async_setup_entry(
     async_add_entities([
         PoolWinterModeSwitch(coordinator, entry),
         PoolEcoModeSwitch(coordinator, entry),
+        PoolBusyModeSwitch(coordinator, entry),
     ])
 
 
@@ -88,3 +89,36 @@ class PoolEcoModeSwitch(CoordinatorEntity[PoolFiltrationCoordinator], SwitchEnti
 
     async def async_turn_off(self, **kwargs) -> None:  # noqa: ANN003
         await self.coordinator.set_eco_mode(False)
+
+
+class PoolBusyModeSwitch(CoordinatorEntity[PoolFiltrationCoordinator], SwitchEntity):
+    """Switch to enable/disable busy (high-occupancy) mode."""
+
+    _attr_has_entity_name = True
+    _attr_translation_key = "busy_mode"
+    _attr_device_class = SwitchDeviceClass.SWITCH
+    _attr_icon = "mdi:pool"
+
+    def __init__(
+        self,
+        coordinator: PoolFiltrationCoordinator,
+        entry: ConfigEntry,
+    ) -> None:
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{entry.entry_id}_busy_mode"
+        self._attr_device_info = {
+            "identifiers": {(DOMAIN, entry.entry_id)},
+            "name": "Pool Filtration",
+            "manufacturer": "Pool Filtration",
+            "model": "Smart Controller",
+        }
+
+    @property
+    def is_on(self) -> bool:
+        return self.coordinator._busy_mode
+
+    async def async_turn_on(self, **kwargs) -> None:  # noqa: ANN003
+        await self.coordinator.set_busy_mode(True)
+
+    async def async_turn_off(self, **kwargs) -> None:  # noqa: ANN003
+        await self.coordinator.set_busy_mode(False)

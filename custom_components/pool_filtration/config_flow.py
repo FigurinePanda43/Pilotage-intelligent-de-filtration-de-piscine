@@ -23,6 +23,10 @@ from .const import (
     CONF_WINTER_RUN_MINUTES,
     CONF_ECO_OFF_PEAK_SLOTS,
     CONF_ECO_OFF_PEAK_SENSOR,
+    CONF_BUSY_BOOST_DURATION,
+    DEFAULT_BUSY_BOOST_DURATION,
+    BUSY_BOOST_MIN_HOURS,
+    BUSY_BOOST_MAX_HOURS,
     DEFAULT_RESET_TIME,
     DEFAULT_ALLOWED_START,
     DEFAULT_ALLOWED_END,
@@ -150,6 +154,20 @@ class PoolFiltrationOptionsFlow(config_entries.OptionsFlow):
                         opts.get(CONF_WINTER_RUN_MINUTES, DEFAULT_WINTER_RUN_MINUTES)
                     ),
                 ): _num(10, 120, step=5),
+                # ── Busy mode – boost nocturne ──────────────────────────────
+                vol.Optional(
+                    CONF_BUSY_BOOST_DURATION,
+                    default=float(
+                        opts.get(CONF_BUSY_BOOST_DURATION, DEFAULT_BUSY_BOOST_DURATION)
+                    ),
+                ): selector.NumberSelector(
+                    selector.NumberSelectorConfig(
+                        min=BUSY_BOOST_MIN_HOURS,
+                        max=BUSY_BOOST_MAX_HOURS,
+                        step=0.5,
+                        mode=_SLIDER,
+                    )
+                ),
                 # ── Eco – heures creuses ────────────────────────────────────
                 vol.Optional(
                     CONF_ECO_OFF_PEAK_SLOTS,

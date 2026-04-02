@@ -30,6 +30,8 @@ from .const import (
     CONF_WINTER_RUN_MINUTES,
     CONF_ECO_OFF_PEAK_SLOTS,
     CONF_ECO_OFF_PEAK_SENSOR,
+    CONF_BUSY_BOOST_DURATION,
+    DEFAULT_BUSY_BOOST_DURATION,
     DEFAULT_RESET_TIME,
     DEFAULT_ALLOWED_START,
     DEFAULT_ALLOWED_END,
@@ -100,6 +102,7 @@ class PoolFiltrationCoordinator(DataUpdateCoordinator):
         self._winter_mode: bool = False
         self._last_winter_cycle: datetime | None = None
         self._eco_mode: bool = False
+        self._busy_mode: bool = False
 
         self._persistent_loaded: bool = False
 
@@ -118,6 +121,13 @@ class PoolFiltrationCoordinator(DataUpdateCoordinator):
         """Enable or disable eco mode and persist the change."""
         self._eco_mode = enabled
         _LOGGER.info("Pool filtration: eco mode %s", "ENABLED" if enabled else "DISABLED")
+        await self._save_persistent_data()
+        await self.async_request_refresh()
+
+    async def set_busy_mode(self, enabled: bool) -> None:
+        """Enable or disable busy (high-occupancy) mode and persist the change."""
+        self._busy_mode = enabled
+        _LOGGER.info("Pool filtration: busy mode %s", "ENABLED" if enabled else "DISABLED")
         await self._save_persistent_data()
         await self.async_request_refresh()
 
@@ -171,6 +181,10 @@ class PoolFiltrationCoordinator(DataUpdateCoordinator):
         time_remaining_window = max(
             0.0, (window_end - now).total_seconds() / 3600.0
         )
+
+        # Busy mode – night boost window (centered on solar midnight)
+        boost_start, boost_end = self._boost_window(now)
+        in_boost_window = boost_start <= now < boost_end
 
         # Accumulate pump run-time (tracks in-window time separately for eco)
         pump_is_on = self._read_pump_state()
@@ -233,6 +247,8 @@ class PoolFiltrationCoordinator(DataUpdateCoordinator):
             h_day_min=h_day_min,
             h_shiftable_remaining=h_shiftable_remaining,
             is_off_peak=is_off_peak,
+            in_boost_window=in_boost_window,
+            degraded=degraded,
         )
 
         system_state = self._compute_system_state(pump_should_be_on, decision_reason, degraded)
@@ -281,6 +297,18 @@ class PoolFiltrationCoordinator(DataUpdateCoordinator):
             "h_shiftable": h_shiftable,
             "h_shiftable_remaining": h_shiftable_remaining,
             "h_done_day": self._h_done_day,
+            # Busy mode
+            "busy_mode": self._busy_mode,
+            "in_boost_window": in_boost_window,
+            "boost_start": boost_start,
+            "boost_end": boost_end,
+            "boost_remaining": (
+                max(0.0, (boost_end - now).total_seconds() / 3600.0)
+                if in_boost_window else 0.0
+            ),
+            "busy_boost_duration": float(
+                self.config_entry.options.get(CONF_BUSY_BOOST_DURATION, DEFAULT_BUSY_BOOST_DURATION)
+            ),
             # Diagnostics
             "degraded": degraded,
         }
@@ -326,14 +354,20 @@ class PoolFiltrationCoordinator(DataUpdateCoordinator):
         h_day_min: float,
         h_shiftable_remaining: float,
         is_off_peak: bool,
+        in_boost_window: bool,
+        degraded: bool,
     ) -> tuple[bool, str]:
         """Return (should_run, reason) for pump decision."""
 
-        # Winter mode overrides everything
+        # 1. Winter mode overrides everything
         if self._winter_mode:
             return self._decide_winter(now, frost_condition)
 
-        # Eco mode (only when eco_allowed; otherwise fall through to normal logic)
+        # 2. Busy mode – night boost (suspended when degraded)
+        if self._busy_mode and in_boost_window and not degraded:
+            return True, "busy_boost"
+
+        # 3. Eco mode (only when eco_allowed; otherwise fall through to normal logic)
         if eco_allowed:
             return self._decide_eco(
                 now, h_remaining, window_end, h_shiftable_remaining, is_off_peak,
@@ -561,6 +595,62 @@ class PoolFiltrationCoordinator(DataUpdateCoordinator):
             _LOGGER.debug("Solar noon calculation failed (%s), using 13:00", exc)
             return now.replace(hour=13, minute=0, second=0, microsecond=0)
 
+    def _sunrise_for_date(self, d) -> datetime:
+        """Return sunrise datetime for a given date."""
+        try:
+            location, _ = get_astral_location(self.hass)
+            from astral.sun import sunrise as astral_sunrise  # bundled with HA
+            tz = dt_util.get_time_zone(self.hass.config.time_zone)
+            return astral_sunrise(location.observer, d, tzinfo=tz)
+        except Exception as exc:  # noqa: BLE001
+            _LOGGER.debug("Sunrise calculation failed (%s), using 06:00", exc)
+            from datetime import timezone
+            tz = dt_util.get_time_zone(self.hass.config.time_zone)
+            from datetime import datetime as _dt
+            return _dt(d.year, d.month, d.day, 6, 0, 0, tzinfo=tz)
+
+    def _sunset_for_date(self, d) -> datetime:
+        """Return sunset datetime for a given date."""
+        try:
+            location, _ = get_astral_location(self.hass)
+            from astral.sun import sunset as astral_sunset  # bundled with HA
+            tz = dt_util.get_time_zone(self.hass.config.time_zone)
+            return astral_sunset(location.observer, d, tzinfo=tz)
+        except Exception as exc:  # noqa: BLE001
+            _LOGGER.debug("Sunset calculation failed (%s), using 21:00", exc)
+            tz = dt_util.get_time_zone(self.hass.config.time_zone)
+            from datetime import datetime as _dt
+            return _dt(d.year, d.month, d.day, 21, 0, 0, tzinfo=tz)
+
+    def _boost_window(self, now: datetime) -> tuple[datetime, datetime]:
+        """Return (boost_start, boost_end) centered on solar midnight for the current night.
+
+        Before noon: uses previous evening's sunset → today's sunrise.
+        After noon:  uses today's sunset → tomorrow's sunrise.
+        """
+        if now.hour < 12:
+            date_eve = (now - timedelta(days=1)).date()
+            date_morn = now.date()
+        else:
+            date_eve = now.date()
+            date_morn = (now + timedelta(days=1)).date()
+
+        sunset = self._sunset_for_date(date_eve)
+        sunrise = self._sunrise_for_date(date_morn)
+
+        night_mid = sunset + (sunrise - sunset) / 2
+
+        boost_h = float(
+            self.config_entry.options.get(CONF_BUSY_BOOST_DURATION, DEFAULT_BUSY_BOOST_DURATION)
+        )
+        half = timedelta(hours=boost_h / 2)
+
+        # Clamp to the night window so boost never spills into daylight
+        boost_start = max(night_mid - half, sunset)
+        boost_end = min(night_mid + half, sunrise)
+
+        return boost_start, boost_end
+
     # ------------------------------------------------------------------
     # System state
     # ------------------------------------------------------------------
@@ -574,6 +664,8 @@ class PoolFiltrationCoordinator(DataUpdateCoordinator):
             return "degraded"
         if reason.startswith("winter"):
             return "winter"
+        if reason == "busy_boost":
+            return "busy"
         if reason in ("catching_up_delay", "end_of_day_catchup"):
             return "catching_up"
         if reason.startswith("eco"):
@@ -743,6 +835,7 @@ class PoolFiltrationCoordinator(DataUpdateCoordinator):
         self._pump_was_on = bool(data.get("pump_was_on", False))
         self._winter_mode = bool(data.get("winter_mode", False))
         self._eco_mode = bool(data.get("eco_mode", False))
+        self._busy_mode = bool(data.get("busy_mode", False))
 
         def _parse_dt(key: str) -> datetime | None:
             raw = data.get(key)
@@ -778,6 +871,7 @@ class PoolFiltrationCoordinator(DataUpdateCoordinator):
                 "pump_was_on": self._pump_was_on,
                 "winter_mode": self._winter_mode,
                 "eco_mode": self._eco_mode,
+                "busy_mode": self._busy_mode,
                 "last_commanded_on": _iso(self._last_commanded_on),
                 "last_commanded_off": _iso(self._last_commanded_off),
                 "last_state_check": _iso(self._last_state_check),

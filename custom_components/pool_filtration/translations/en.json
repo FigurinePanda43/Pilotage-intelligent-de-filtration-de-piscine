@@ -27,6 +27,7 @@
           "allowed_end": "Latest allowed stop hour",
           "winter_cycle_hours": "Winter cycle interval (hours)",
           "winter_run_minutes": "Winter cycle run duration (minutes)",
+          "busy_boost_duration": "Night boost duration (hours) — Busy mode",
           "eco_off_peak_slots": "Off-peak time slots (Option A) — e.g. 22:00-06:00,12:00-14:00",
           "eco_off_peak_sensor": "Off-peak binary sensor (Option B — takes priority)",
           "pump_switch": "Pump switch (override)",
@@ -92,11 +93,19 @@
       "current_tariff": {
         "name": "Current tariff",
         "state": { "HC": "Off-peak (HC)", "HP": "Peak (HP)" }
-      }
+      },
+      "busy_mode_active": {
+        "name": "Busy mode status",
+        "state": { "active": "Active", "standby": "Standby" }
+      },
+      "busy_boost_duration": { "name": "Night boost duration" },
+      "busy_boost_window": { "name": "Night boost window" },
+      "busy_remaining_time": { "name": "Boost remaining time" }
     },
     "switch": {
       "winter_mode": { "name": "Winter mode" },
-      "eco_mode": { "name": "Eco mode" }
+      "eco_mode": { "name": "Eco mode" },
+      "busy_mode": { "name": "Busy mode" }
     }
   }
 }

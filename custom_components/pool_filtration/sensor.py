@@ -170,6 +170,38 @@ SENSORS: tuple[PoolSensorDescription, ...] = (
         translation_key="current_tariff",
         value_fn=lambda d: d["current_tariff"],
     ),
+    # --- Busy mode (forte fréquentation) sensors ---
+    PoolSensorDescription(
+        key="busy_mode_active",
+        translation_key="busy_mode_active",
+        value_fn=lambda d: "active" if d["busy_mode"] else "standby",
+    ),
+    PoolSensorDescription(
+        key="busy_boost_duration",
+        translation_key="busy_boost_duration",
+        native_unit_of_measurement=UnitOfTime.HOURS,
+        device_class=SensorDeviceClass.DURATION,
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=1,
+        value_fn=lambda d: round(d["busy_boost_duration"], 1),
+    ),
+    PoolSensorDescription(
+        key="busy_boost_window",
+        translation_key="busy_boost_window",
+        value_fn=lambda d: (
+            f"{d['boost_start'].strftime('%H:%M')} – {d['boost_end'].strftime('%H:%M')}"
+            if d.get("boost_start") else "—"
+        ),
+    ),
+    PoolSensorDescription(
+        key="busy_remaining_time",
+        translation_key="busy_remaining_time",
+        native_unit_of_measurement=UnitOfTime.HOURS,
+        device_class=SensorDeviceClass.DURATION,
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=2,
+        value_fn=lambda d: round(d["boost_remaining"], 2),
+    ),
 )
 
 

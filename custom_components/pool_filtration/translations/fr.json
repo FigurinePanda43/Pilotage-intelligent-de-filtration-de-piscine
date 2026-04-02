@@ -27,6 +27,7 @@
           "allowed_end": "Heure de fin autorisée",
           "winter_cycle_hours": "Intervalle entre cycles hivernage (heures)",
           "winter_run_minutes": "Durée d'un cycle hivernage (minutes)",
+          "busy_boost_duration": "Durée du boost nocturne (heures) — Mode forte fréquentation",
           "eco_off_peak_slots": "Plages heures creuses (Option A) — ex : 22:00-06:00,12:00-14:00",
           "eco_off_peak_sensor": "Binary sensor heures creuses (Option B — prioritaire)",
           "pump_switch": "Interrupteur de la pompe (remplacement)",
@@ -92,11 +93,19 @@
       "current_tariff": {
         "name": "Tarif actuel",
         "state": { "HC": "Heures creuses (HC)", "HP": "Heures pleines (HP)" }
-      }
+      },
+      "busy_mode_active": {
+        "name": "Statut mode forte fréquentation",
+        "state": { "active": "Actif", "standby": "En veille" }
+      },
+      "busy_boost_duration": { "name": "Durée boost nocturne" },
+      "busy_boost_window": { "name": "Fenêtre boost nocturne" },
+      "busy_remaining_time": { "name": "Temps restant boost" }
     },
     "switch": {
       "winter_mode": { "name": "Mode hivernage" },
-      "eco_mode": { "name": "Mode éco" }
+      "eco_mode": { "name": "Mode éco" },
+      "busy_mode": { "name": "Mode forte fréquentation" }
     }
   }
 }
