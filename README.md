@@ -240,6 +240,51 @@ Dans ces cas, le système revient automatiquement au comportement normal jusqu'�
 
 ---
 
+## Dashboards Lovelace
+
+Deux exemples de dashboards prêts à l'emploi sont disponibles dans le dossier [`dashboards/`](dashboards/).
+
+> **IDs d'entités** : les IDs générés par HA dépendent de la langue et de la version. Si une entité n'est pas trouvée, allez dans **Paramètres → Appareils et services → Entités**, filtrez par "Pool Filtration" et copiez l'ID réel.
+
+---
+
+### Dashboard minimaliste (`dashboards/minimaliste.yaml`)
+
+Vue rapide sur une seule page. Idéal pour un téléphone ou un panneau compact.
+
+| Carte | Contenu |
+|-------|---------|
+| État global | Système, pompe, planning |
+| Jauge | Progression de la filtration journalière |
+| Objectifs | H_target / effectuée / restante |
+| Conditions | Température eau, air, vent |
+| Modes | Hivernage, éco, forte fréquentation + bouton reset |
+
+**Utilisation :**
+1. Dashboard → ⋮ → *Modifier* → *Ajouter une vue*
+2. Passer en mode YAML, coller le contenu de `dashboards/minimaliste.yaml`
+
+---
+
+### Dashboard complet (`dashboards/complet.yaml`)
+
+Six vues thématiques pour un suivi détaillé.
+
+| Vue | Contenu |
+|-----|---------|
+| Tableau de bord | Statut, jauge, objectifs, modes, historique filtration |
+| Environnement | Jauges températures, UV, vent, graphiques 24 h |
+| Mode éco | Statut, tarif HC/HP, heures déplaçables, historique |
+| Forte fréquentation | Statut boost, fenêtre nocturne, temps restant |
+| Hivernage | Températures de référence gel, historique 7 jours |
+| Diagnostics | Tous les capteurs, raison de décision, état système |
+
+**Utilisation :**
+1. Dashboard → ⋮ → *Modifier* → *Ajouter une vue*
+2. Répéter pour chaque vue en copiant la section correspondante du YAML
+
+---
+
 ## Installation
 
 1. Ajouter ce dépôt dans HACS → *Intégrations personnalisées*

@@ -1,0 +1,89 @@
+# ============================================================
+#  Dashboard Piscine – Vue minimaliste
+#  Accès rapide aux états principaux et aux commandes clés
+# ============================================================
+#
+# IMPORTANT – IDs d'entités
+# Les IDs ci-dessous suivent la convention automatique de HA.
+# Si certaines entités ne se chargent pas, vérifiez les vrais
+# IDs dans : Paramètres → Appareils et services → Entités
+# puis filtrez par "Pool Filtration".
+# ============================================================
+
+title: Piscine
+views:
+  - title: Piscine
+    icon: mdi:pool
+    cards:
+
+      # ── Statut global ─────────────────────────────────────
+      - type: glance
+        title: État global
+        columns: 3
+        entities:
+          - entity: sensor.pool_filtration_etat_du_systeme
+            name: Système
+            icon: mdi:information-outline
+          - entity: sensor.pool_filtration_etat_filtration
+            name: Pompe
+            icon: mdi:pump
+          - entity: sensor.pool_filtration_statut_du_planning
+            name: Planning
+            icon: mdi:clock-check-outline
+
+      # ── Progression filtration (jauge) ────────────────────
+      - type: gauge
+        title: Filtration effectuée aujourd'hui
+        entity: sensor.pool_filtration_filtration_effectuee
+        unit: h
+        min: 0
+        max: 18
+        needle: true
+        severity:
+          green: 0
+          yellow: 10
+          red: 16
+
+      # ── Compteurs journaliers ─────────────────────────────
+      - type: entities
+        title: Objectifs du jour
+        entities:
+          - entity: sensor.pool_filtration_objectif_filtration
+            name: Objectif
+            icon: mdi:target
+          - entity: sensor.pool_filtration_filtration_effectuee
+            name: Effectuée
+            icon: mdi:check-circle-outline
+          - entity: sensor.pool_filtration_filtration_restante
+            name: Restante
+            icon: mdi:timer-sand
+
+      # ── Températures et conditions ────────────────────────
+      - type: glance
+        title: Conditions actuelles
+        columns: 3
+        entities:
+          - entity: sensor.pool_filtration_temp_eau_moy_3_h
+            name: Eau
+            icon: mdi:thermometer-water
+          - entity: sensor.pool_filtration_temp_air_moy_3_h
+            name: Air
+            icon: mdi:thermometer
+          - entity: sensor.pool_filtration_vent_moy_1_h
+            name: Vent
+            icon: mdi:weather-windy
+
+      # ── Modes et commandes ────────────────────────────────
+      - type: entities
+        title: Modes & commandes
+        entities:
+          - entity: switch.pool_filtration_mode_hivernage
+            icon: mdi:snowflake
+          - entity: switch.pool_filtration_mode_eco
+            icon: mdi:leaf
+          - entity: switch.pool_filtration_mode_forte_frequentation
+            icon: mdi:pool
+          - type: divider
+          - entity: button.pool_filtration_reinitialiser_les_compteurs_journaliers
+            icon: mdi:restart
+            name: Réinitialiser l'objectif

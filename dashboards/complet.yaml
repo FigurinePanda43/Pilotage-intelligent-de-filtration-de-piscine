@@ -1,0 +1,306 @@
+# ============================================================
+#  Dashboard Piscine – Vue complète
+#  Tous les capteurs, modes et historiques
+# ============================================================
+#
+# IMPORTANT – IDs d'entités
+# Les IDs ci-dessous suivent la convention automatique de HA.
+# Si certaines entités ne se chargent pas, vérifiez les vrais
+# IDs dans : Paramètres → Appareils et services → Entités
+# puis filtrez par "Pool Filtration".
+# ============================================================
+
+title: Piscine – Complet
+views:
+
+  # ==========================================================
+  #  VUE 1 – Tableau de bord principal
+  # ==========================================================
+  - title: Tableau de bord
+    icon: mdi:view-dashboard
+    cards:
+
+      # ── Statut global ─────────────────────────────────────
+      - type: glance
+        title: État du système
+        columns: 4
+        entities:
+          - entity: sensor.pool_filtration_etat_du_systeme
+            name: Système
+            icon: mdi:information-outline
+          - entity: sensor.pool_filtration_etat_filtration
+            name: Pompe
+            icon: mdi:pump
+          - entity: sensor.pool_filtration_raison_de_la_decision
+            name: Décision
+            icon: mdi:brain
+          - entity: sensor.pool_filtration_statut_du_planning
+            name: Planning
+            icon: mdi:clock-check-outline
+
+      # ── Progression filtration ────────────────────────────
+      - type: horizontal-stack
+        cards:
+          - type: gauge
+            title: Filtration effectuée
+            entity: sensor.pool_filtration_filtration_effectuee
+            unit: h
+            min: 0
+            max: 18
+            needle: true
+            severity:
+              green: 0
+              yellow: 10
+              red: 16
+          - type: entities
+            title: Objectifs
+            entities:
+              - entity: sensor.pool_filtration_objectif_minimal
+                name: Minimum (H_min)
+                icon: mdi:arrow-down-circle-outline
+              - entity: sensor.pool_filtration_objectif_dynamique
+                name: Dynamique (H_dyn)
+                icon: mdi:chart-line
+              - entity: sensor.pool_filtration_objectif_filtration
+                name: Objectif du jour
+                icon: mdi:target
+              - entity: sensor.pool_filtration_filtration_effectuee
+                name: Effectuée
+                icon: mdi:check-circle-outline
+              - entity: sensor.pool_filtration_filtration_restante
+                name: Restante
+                icon: mdi:timer-sand
+              - entity: sensor.pool_filtration_temps_restant_fenetre_solaire
+                name: Fenêtre solaire restante
+                icon: mdi:weather-sunny-alert
+
+      # ── Modes et commandes ────────────────────────────────
+      - type: entities
+        title: Modes & commandes
+        entities:
+          - entity: switch.pool_filtration_mode_hivernage
+            icon: mdi:snowflake
+          - entity: switch.pool_filtration_mode_eco
+            icon: mdi:leaf
+          - entity: switch.pool_filtration_mode_forte_frequentation
+            icon: mdi:pool
+          - type: divider
+          - entity: button.pool_filtration_reinitialiser_les_compteurs_journaliers
+            name: Réinitialiser l'objectif
+            icon: mdi:restart
+
+      # ── Historique filtration ─────────────────────────────
+      - type: history-graph
+        title: Historique filtration (24 h)
+        hours_to_show: 24
+        entities:
+          - entity: sensor.pool_filtration_filtration_effectuee
+            name: Effectuée
+          - entity: sensor.pool_filtration_objectif_filtration
+            name: Objectif
+
+  # ==========================================================
+  #  VUE 2 – Conditions environnementales
+  # ==========================================================
+  - title: Environnement
+    icon: mdi:weather-partly-cloudy
+    cards:
+
+      # ── Températures ──────────────────────────────────────
+      - type: horizontal-stack
+        cards:
+          - type: gauge
+            title: Temp. eau (moy. 3 h)
+            entity: sensor.pool_filtration_temp_eau_moy_3_h
+            unit: °C
+            min: 0
+            max: 35
+            needle: true
+            severity:
+              green: 24
+              yellow: 15
+              red: 0
+          - type: gauge
+            title: Temp. air (moy. 3 h)
+            entity: sensor.pool_filtration_temp_air_moy_3_h
+            unit: °C
+            min: -10
+            max: 40
+            needle: true
+            severity:
+              green: 20
+              yellow: 10
+              red: -5
+
+      - type: glance
+        title: UV et vent
+        columns: 2
+        entities:
+          - entity: sensor.pool_filtration_uv_moy_1_h
+            name: UV (moy. 1 h)
+            icon: mdi:weather-sunny
+          - entity: sensor.pool_filtration_vent_moy_1_h
+            name: Vent (moy. 1 h)
+            icon: mdi:weather-windy
+
+      # ── Historiques ───────────────────────────────────────
+      - type: history-graph
+        title: Températures (24 h)
+        hours_to_show: 24
+        entities:
+          - entity: sensor.pool_filtration_temp_eau_moy_3_h
+            name: Eau
+          - entity: sensor.pool_filtration_temp_air_moy_3_h
+            name: Air
+
+      - type: history-graph
+        title: UV et vent (24 h)
+        hours_to_show: 24
+        entities:
+          - entity: sensor.pool_filtration_uv_moy_1_h
+            name: UV
+          - entity: sensor.pool_filtration_vent_moy_1_h
+            name: Vent
+
+  # ==========================================================
+  #  VUE 3 – Mode éco
+  # ==========================================================
+  - title: Mode éco
+    icon: mdi:leaf
+    cards:
+
+      - type: entities
+        title: Mode éco – Statut
+        entities:
+          - entity: switch.pool_filtration_mode_eco
+            name: Activer le mode éco
+          - entity: sensor.pool_filtration_statut_mode_eco
+            name: Statut
+            icon: mdi:information-outline
+          - entity: sensor.pool_filtration_tarif_actuel
+            name: Tarif actuel
+            icon: mdi:currency-eur
+          - type: divider
+          - entity: sensor.pool_filtration_eco_heures_depla_ables
+            name: Heures déplaçables (H_shift)
+            icon: mdi:transfer-right
+          - entity: sensor.pool_filtration_eco_heures_depla_ables_restantes
+            name: Déplaçables restantes
+            icon: mdi:timer-outline
+
+      - type: history-graph
+        title: Tarif (24 h)
+        hours_to_show: 24
+        entities:
+          - entity: sensor.pool_filtration_tarif_actuel
+            name: Tarif HC/HP
+
+  # ==========================================================
+  #  VUE 4 – Mode forte fréquentation
+  # ==========================================================
+  - title: Forte fréquentation
+    icon: mdi:pool
+    cards:
+
+      - type: entities
+        title: Mode forte fréquentation – Statut
+        entities:
+          - entity: switch.pool_filtration_mode_forte_frequentation
+            name: Activer le mode forte fréquentation
+          - entity: sensor.pool_filtration_statut_mode_forte_frequentation
+            name: Statut
+            icon: mdi:information-outline
+          - type: divider
+          - entity: sensor.pool_filtration_duree_boost_nocturne
+            name: Durée boost configurée
+            icon: mdi:clock-outline
+          - entity: sensor.pool_filtration_fenetre_boost_nocturne
+            name: Fenêtre tonight
+            icon: mdi:weather-night
+          - entity: sensor.pool_filtration_temps_restant_boost
+            name: Temps restant dans le boost
+            icon: mdi:timer-sand
+
+      - type: history-graph
+        title: Boost nocturne (48 h)
+        hours_to_show: 48
+        entities:
+          - entity: sensor.pool_filtration_temps_restant_boost
+            name: Temps boost restant
+
+  # ==========================================================
+  #  VUE 5 – Mode hivernage
+  # ==========================================================
+  - title: Hivernage
+    icon: mdi:snowflake
+    cards:
+
+      - type: entities
+        title: Mode hivernage – Statut
+        entities:
+          - entity: switch.pool_filtration_mode_hivernage
+            name: Activer le mode hivernage
+          - type: divider
+          - entity: sensor.pool_filtration_temp_eau_moy_3_h
+            name: Temp. eau (réf. gel ≤ 5 °C)
+            icon: mdi:thermometer-water
+          - entity: sensor.pool_filtration_temp_air_moy_3_h
+            name: Temp. air (réf. gel ≤ 0 °C)
+            icon: mdi:thermometer
+
+      - type: history-graph
+        title: Températures hivernage (7 jours)
+        hours_to_show: 168
+        entities:
+          - entity: sensor.pool_filtration_temp_eau_moy_3_h
+            name: Eau
+          - entity: sensor.pool_filtration_temp_air_moy_3_h
+            name: Air
+
+  # ==========================================================
+  #  VUE 6 – Diagnostics
+  # ==========================================================
+  - title: Diagnostics
+    icon: mdi:bug-outline
+    cards:
+
+      - type: entities
+        title: Décision moteur
+        entities:
+          - entity: sensor.pool_filtration_etat_du_systeme
+            name: État système
+          - entity: sensor.pool_filtration_raison_de_la_decision
+            name: Raison décision
+          - entity: sensor.pool_filtration_statut_du_planning
+            name: Statut planning
+          - entity: sensor.pool_filtration_temps_restant_fenetre_solaire
+            name: Fenêtre solaire restante
+
+      - type: entities
+        title: Tous les capteurs
+        entities:
+          - entity: sensor.pool_filtration_objectif_minimal
+            name: H_min
+          - entity: sensor.pool_filtration_objectif_dynamique
+            name: H_dyn
+          - entity: sensor.pool_filtration_objectif_filtration
+            name: H_target
+          - entity: sensor.pool_filtration_filtration_effectuee
+            name: H_done
+          - entity: sensor.pool_filtration_filtration_restante
+            name: H_remaining
+          - type: divider
+          - entity: sensor.pool_filtration_temp_eau_moy_3_h
+          - entity: sensor.pool_filtration_temp_air_moy_3_h
+          - entity: sensor.pool_filtration_uv_moy_1_h
+          - entity: sensor.pool_filtration_vent_moy_1_h
+          - type: divider
+          - entity: sensor.pool_filtration_statut_mode_eco
+          - entity: sensor.pool_filtration_tarif_actuel
+          - entity: sensor.pool_filtration_eco_heures_depla_ables
+          - entity: sensor.pool_filtration_eco_heures_depla_ables_restantes
+          - type: divider
+          - entity: sensor.pool_filtration_statut_mode_forte_frequentation
+          - entity: sensor.pool_filtration_duree_boost_nocturne
+          - entity: sensor.pool_filtration_fenetre_boost_nocturne
+          - entity: sensor.pool_filtration_temps_restant_boost
