@@ -157,18 +157,27 @@ class PoolFiltrationCoordinator(DataUpdateCoordinator):
         wind, wind_degraded = self._read_wind_with_flag()
         degraded = wt_degraded or at_degraded or uv_degraded or wind_degraded
 
-        # Update rolling averages – only push real readings, never fallback values.
-        # A degraded (unavailable) reading must not contaminate the history window.
-        if not wt_degraded:
-            self._push(self._water_temp_history, now, water_temp, WATER_TEMP_AVG_HOURS)
-        if not at_degraded:
-            self._push(self._air_temp_history, now, air_temp, AIR_TEMP_AVG_HOURS)
-        if not uv_degraded:
-            self._push(self._uv_history, now, uv, UV_AVG_HOURS)
-        if not wind_degraded:
-            self._push(self._wind_history, now, wind, WIND_AVG_HOURS)
+        # Prune stale entries every cycle regardless of sensor availability.
+        # This ensures the last-known-value fallback is bounded to the history
+        # window: unavailable < window → last known value; ≥ window → hardcoded fallback.
+        self._prune(self._water_temp_history, now, WATER_TEMP_AVG_HOURS)
+        self._prune(self._air_temp_history, now, AIR_TEMP_AVG_HOURS)
+        self._prune(self._uv_history, now, UV_AVG_HOURS)
+        self._prune(self._wind_history, now, WIND_AVG_HOURS)
 
-        # Averages: use the history window when available, else fallback
+        # Append only real (non-fallback) readings
+        if not wt_degraded:
+            self._water_temp_history.append((now, water_temp))
+        if not at_degraded:
+            self._air_temp_history.append((now, air_temp))
+        if not uv_degraded:
+            self._uv_history.append((now, uv))
+        if not wind_degraded:
+            self._wind_history.append((now, wind))
+
+        # Averages:
+        #   capteur indisponible < fenêtre → moyenne des dernières vraies valeurs
+        #   capteur indisponible ≥ fenêtre → deque vide → valeur par défaut
         water_temp_avg = self._avg(self._water_temp_history) if self._water_temp_history else FALLBACK_WATER_TEMP
         air_temp_avg = self._avg(self._air_temp_history) if self._air_temp_history else FALLBACK_AIR_TEMP
         uv_avg = self._avg(self._uv_history) if self._uv_history else FALLBACK_UV
@@ -801,14 +810,12 @@ class PoolFiltrationCoordinator(DataUpdateCoordinator):
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _push(
+    def _prune(
         history: deque[tuple[datetime, float]],
         now: datetime,
-        value: float,
         window_hours: float,
     ) -> None:
-        """Append value and prune entries older than window_hours."""
-        history.append((now, value))
+        """Remove entries older than window_hours from the left of the deque."""
         cutoff = now - timedelta(hours=window_hours)
         while history and history[0][0] < cutoff:
             history.popleft()
