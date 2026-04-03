@@ -106,6 +106,9 @@
       "winter_mode": { "name": "Mode hivernage" },
       "eco_mode": { "name": "Mode éco" },
       "busy_mode": { "name": "Mode forte fréquentation" }
+    },
+    "button": {
+      "reset_counters": { "name": "Réinitialiser les compteurs journaliers" }
     }
   }
 }

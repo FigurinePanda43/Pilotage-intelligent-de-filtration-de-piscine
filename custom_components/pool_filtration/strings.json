@@ -111,6 +111,9 @@
       "winter_mode": { "name": "Winter mode" },
       "eco_mode": { "name": "Eco mode" },
       "busy_mode": { "name": "Busy mode" }
+    },
+    "button": {
+      "reset_counters": { "name": "Reset daily counters" }
     }
   }
 }

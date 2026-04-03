@@ -124,6 +124,15 @@ class PoolFiltrationCoordinator(DataUpdateCoordinator):
         await self._save_persistent_data()
         await self.async_request_refresh()
 
+    async def reset_daily_counters(self) -> None:
+        """Manually reset daily filtration counters (h_done, h_done_day, h_target)."""
+        self._h_done = 0.0
+        self._h_done_day = 0.0
+        self._h_target = 0.0
+        _LOGGER.info("Pool filtration: manual daily reset triggered")
+        await self._save_persistent_data()
+        await self.async_request_refresh()
+
     async def set_busy_mode(self, enabled: bool) -> None:
         """Enable or disable busy (high-occupancy) mode and persist the change."""
         self._busy_mode = enabled

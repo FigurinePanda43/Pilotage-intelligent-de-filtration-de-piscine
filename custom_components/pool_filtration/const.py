@@ -1,7 +1,7 @@
 """Constants for the Pool Filtration integration."""
 
 DOMAIN = "pool_filtration"
-PLATFORMS = ["sensor", "switch"]
+PLATFORMS = ["sensor", "switch", "button"]
 
 # ---------------------------------------------------------------------------
 # Config / options keys
