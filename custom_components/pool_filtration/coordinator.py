@@ -177,7 +177,12 @@ class PoolFiltrationCoordinator(DataUpdateCoordinator):
         # Compute filtration targets
         h_min = self._h_min(water_temp_avg)
         h_dyn = self._h_dyn(water_temp_avg, uv_avg, wind_avg, air_temp_avg)
-        self._h_target = max(self._h_target, h_min, h_dyn)
+        # Only ratchet h_target when we have at least one real temperature reading.
+        # If the history is empty AND sensors are degraded (e.g. first cycle after
+        # a restart), the averages are fallback values (20 °C) which would inflate
+        # h_target to 10 h and lock it there for the rest of the day.
+        if self._water_temp_history or not degraded:
+            self._h_target = max(self._h_target, h_min, h_dyn)
 
         # Solar window – computed BEFORE accumulation so in_window is available
         solar_noon = self._solar_noon(now)
