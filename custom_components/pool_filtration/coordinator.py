@@ -28,6 +28,8 @@ from .const import (
     CONF_ALLOWED_END,
     CONF_WINTER_CYCLE_HOURS,
     CONF_WINTER_RUN_MINUTES,
+    CONF_TARGET_FACTOR,
+    DEFAULT_TARGET_FACTOR,
     CONF_ECO_OFF_PEAK_SLOTS,
     CONF_ECO_OFF_PEAK_SENSOR,
     CONF_BUSY_BOOST_DURATION,
@@ -197,12 +199,20 @@ class PoolFiltrationCoordinator(DataUpdateCoordinator):
         # Compute filtration targets
         h_min = self._h_min(water_temp_avg)
         h_dyn = self._h_dyn(water_temp_avg, uv_avg, wind_avg, air_temp_avg)
+
+        # Apply user correction factor (0.5–2.0, default 1.0)
+        target_factor = float(
+            self.config_entry.options.get(CONF_TARGET_FACTOR, DEFAULT_TARGET_FACTOR)
+        )
+        h_min_adj = min(h_min * target_factor, MAX_FILTRATION_HOURS)
+        h_dyn_adj = min(h_dyn * target_factor, MAX_FILTRATION_HOURS)
+
         # Only ratchet h_target when we have at least one real temperature reading.
         # If the history is empty AND sensors are degraded (e.g. first cycle after
         # a restart), the averages are fallback values (20 °C) which would inflate
         # h_target to 10 h and lock it there for the rest of the day.
         if self._water_temp_history or not degraded:
-            self._h_target = max(self._h_target, h_min, h_dyn)
+            self._h_target = max(self._h_target, h_min_adj, h_dyn_adj)
 
         # Solar window – computed BEFORE accumulation so in_window is available
         solar_noon = self._solar_noon(now)
@@ -301,6 +311,9 @@ class PoolFiltrationCoordinator(DataUpdateCoordinator):
             # Targets
             "h_min": h_min,
             "h_dyn": h_dyn,
+            "target_factor": target_factor,
+            "h_min_adj": h_min_adj,
+            "h_dyn_adj": h_dyn_adj,
             "h_target": self._h_target,
             "h_done": self._h_done,
             "h_remaining": h_remaining,

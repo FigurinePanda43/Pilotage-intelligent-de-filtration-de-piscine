@@ -18,6 +18,7 @@ CONF_ALLOWED_START = "allowed_start"
 CONF_ALLOWED_END = "allowed_end"
 CONF_WINTER_CYCLE_HOURS = "winter_cycle_hours"
 CONF_WINTER_RUN_MINUTES = "winter_run_minutes"
+CONF_TARGET_FACTOR = "target_factor"
 
 # ---------------------------------------------------------------------------
 # Defaults
@@ -28,6 +29,9 @@ DEFAULT_ALLOWED_END = 23
 DEFAULT_WINTER_CYCLE_HOURS = 4
 DEFAULT_WINTER_RUN_MINUTES = 60
 DEFAULT_SCAN_INTERVAL = 10  # minutes
+DEFAULT_TARGET_FACTOR = 1.0
+TARGET_FACTOR_MIN = 0.5
+TARGET_FACTOR_MAX = 2.0
 
 # ---------------------------------------------------------------------------
 # Filtration limits

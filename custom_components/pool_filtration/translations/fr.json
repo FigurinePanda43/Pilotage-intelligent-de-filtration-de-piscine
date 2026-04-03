@@ -27,6 +27,7 @@
           "allowed_end": "Heure de fin autorisée",
           "winter_cycle_hours": "Intervalle entre cycles hivernage (heures)",
           "winter_run_minutes": "Durée d'un cycle hivernage (minutes)",
+          "target_factor": "Facteur de correction de l'objectif (0.5 = −50 %, 1.0 = neutre, 2.0 = +100 %)",
           "busy_boost_duration": "Durée du boost nocturne (heures) — Mode forte fréquentation",
           "eco_off_peak_slots": "Plages heures creuses (Option A) — ex : 22:00-06:00,12:00-14:00",
           "eco_off_peak_sensor": "Binary sensor heures creuses (Option B — prioritaire)",
@@ -84,6 +85,7 @@
           "degraded": "Dégradé (capteur indisponible)"
         }
       },
+      "target_factor": { "name": "Facteur de correction objectif" },
       "eco_shiftable_hours": { "name": "Éco – heures déplaçables" },
       "eco_remaining_shiftable": { "name": "Éco – heures déplaçables restantes" },
       "eco_allowed": {

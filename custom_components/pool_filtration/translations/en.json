@@ -27,6 +27,7 @@
           "allowed_end": "Latest allowed stop hour",
           "winter_cycle_hours": "Winter cycle interval (hours)",
           "winter_run_minutes": "Winter cycle run duration (minutes)",
+          "target_factor": "Filtration target correction factor (0.5 = −50 %, 1.0 = neutral, 2.0 = +100 %)",
           "busy_boost_duration": "Night boost duration (hours) — Busy mode",
           "eco_off_peak_slots": "Off-peak time slots (Option A) — e.g. 22:00-06:00,12:00-14:00",
           "eco_off_peak_sensor": "Off-peak binary sensor (Option B — takes priority)",
@@ -84,6 +85,7 @@
           "degraded": "Degraded (sensor unavailable)"
         }
       },
+      "target_factor": { "name": "Target correction factor" },
       "eco_shiftable_hours": { "name": "Eco – shiftable hours" },
       "eco_remaining_shiftable": { "name": "Eco – remaining shiftable" },
       "eco_allowed": {

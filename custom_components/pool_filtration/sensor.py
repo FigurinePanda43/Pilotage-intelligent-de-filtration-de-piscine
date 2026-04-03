@@ -98,6 +98,13 @@ SENSORS: tuple[PoolSensorDescription, ...] = (
         suggested_display_precision=1,
         value_fn=lambda d: round(d["wind_avg_1h"], 1),
     ),
+    PoolSensorDescription(
+        key="target_factor",
+        translation_key="target_factor",
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=1,
+        value_fn=lambda d: round(d["target_factor"], 1),
+    ),
     # --- Advanced computed sensors ---
     PoolSensorDescription(
         key="dynamic_target",
