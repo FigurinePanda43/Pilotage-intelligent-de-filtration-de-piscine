@@ -157,16 +157,22 @@ class PoolFiltrationCoordinator(DataUpdateCoordinator):
         wind, wind_degraded = self._read_wind_with_flag()
         degraded = wt_degraded or at_degraded or uv_degraded or wind_degraded
 
-        # Update rolling averages
-        self._push(self._water_temp_history, now, water_temp, WATER_TEMP_AVG_HOURS)
-        self._push(self._air_temp_history, now, air_temp, AIR_TEMP_AVG_HOURS)
-        self._push(self._uv_history, now, uv, UV_AVG_HOURS)
-        self._push(self._wind_history, now, wind, WIND_AVG_HOURS)
+        # Update rolling averages – only push real readings, never fallback values.
+        # A degraded (unavailable) reading must not contaminate the history window.
+        if not wt_degraded:
+            self._push(self._water_temp_history, now, water_temp, WATER_TEMP_AVG_HOURS)
+        if not at_degraded:
+            self._push(self._air_temp_history, now, air_temp, AIR_TEMP_AVG_HOURS)
+        if not uv_degraded:
+            self._push(self._uv_history, now, uv, UV_AVG_HOURS)
+        if not wind_degraded:
+            self._push(self._wind_history, now, wind, WIND_AVG_HOURS)
 
-        water_temp_avg = self._avg(self._water_temp_history)
-        air_temp_avg = self._avg(self._air_temp_history)
-        uv_avg = self._avg(self._uv_history)
-        wind_avg = self._avg(self._wind_history)
+        # Averages: use the history window when available, else fallback
+        water_temp_avg = self._avg(self._water_temp_history) if self._water_temp_history else FALLBACK_WATER_TEMP
+        air_temp_avg = self._avg(self._air_temp_history) if self._air_temp_history else FALLBACK_AIR_TEMP
+        uv_avg = self._avg(self._uv_history) if self._uv_history else FALLBACK_UV
+        wind_avg = self._avg(self._wind_history) if self._wind_history else FALLBACK_WIND
 
         # Compute filtration targets
         h_min = self._h_min(water_temp_avg)
