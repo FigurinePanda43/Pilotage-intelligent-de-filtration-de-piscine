@@ -102,14 +102,32 @@ Au-delà de 26 °C, la chaleur accélère la consommation du chlore et la charge
 - T_air = 30 °C → +0.48 h (29 min)
 - T_air = 35 °C → +1.08 h (65 min)
 
-Le résultat est plafonné à **18 h** pour éviter le fonctionnement permanent.
+Le résultat est plafonné au **plafond journalier configurable** (18 h par défaut) pour éviter le fonctionnement permanent.
 
 ---
 
-#### 2c. Objectif final — `H_target`
+#### 2c. Facteur de correction — `F_correction`
+
+Un multiplicateur optionnel (0.5–2.0, défaut 1.0) permet d'adapter l'objectif à l'installation réelle :
 
 ```
-H_target = max(H_target_précédent, H_min, H_dyn)
+H_min_adj = min(H_min × F_correction ; plafond)
+H_dyn_adj = min(H_dyn × F_correction ; plafond)
+```
+
+| Facteur | Effet | Cas d'usage |
+|---------|-------|-------------|
+| 0.5 | −50 % | Installation surdimensionnée, eau toujours claire |
+| 1.0 | Neutre | **Défaut** |
+| 1.5 | +50 % | Filtre vieillissant ou sous-dimensionné |
+| 2.0 | +100 % | Piscine fortement sous-filtrée |
+
+---
+
+#### 2d. Objectif final — `H_target`
+
+```
+H_target = max(H_target_précédent, H_min_adj, H_dyn_adj)
 ```
 
 `H_target` prend le **maximum des trois valeurs**. Il ne peut **jamais diminuer** au cours d'une journée.
@@ -118,6 +136,7 @@ Pourquoi ? Si une canicule arrive à 14h alors que l'objectif du matin était de
 C'est une protection contre la sous-filtration accidentelle.
 
 La remise à zéro s'effectue chaque jour à l'heure configurée (par défaut 00:00).
+Un **bouton de réinitialisation** (`button.pool_filtration_reset_daily_counters`) permet de remettre l'objectif à zéro manuellement sans attendre minuit — utile si l'objectif a été gonflé par erreur (redémarrage avec capteurs indisponibles, etc.).
 
 ---
 
@@ -161,11 +180,11 @@ Après la fenêtre solaire, si l'objectif n'est pas atteint, la pompe continue d
 
 Ces règles s'appliquent **par-dessus** la décision logique, comme des verrous matériels :
 
-| Garde-fou | Valeur | Raison |
-|-----------|--------|--------|
+| Garde-fou | Valeur par défaut | Raison |
+|-----------|-------------------|--------|
 | Durée minimum ON | 30 min | Protège la pompe contre les démarrages trop fréquents |
 | Durée minimum OFF | 15 min | Laisse le moteur refroidir entre deux cycles |
-| Plafond journalier | 18 h | Évite la surconsommation en cas de bug capteur |
+| Plafond journalier | 18 h (**configurable** 6–24 h) | Évite la surconsommation en cas de bug capteur |
 | Plage horaire | 06h–23h | Évite de faire tourner la pompe la nuit (bruit, tarif) |
 | Anti-régression | — | `H_target` ne peut que croître dans la journée |
 
@@ -183,7 +202,10 @@ Ces règles s'appliquent **par-dessus** la décision logique, comme des verrous 
       │
       ├──▶  H_dyn = H_min + ajustements UV + vent + chaleur
       │
-      └──▶  H_target = max(H_target_veille, H_min, H_dyn)  ← figé à la hausse
+      ├──▶  H_min_adj = min(H_min × F_correction ; plafond)
+      ├──▶  H_dyn_adj = min(H_dyn × F_correction ; plafond)
+      │
+      └──▶  H_target = max(H_target_veille, H_min_adj, H_dyn_adj)  ← figé à la hausse
 
 [H_target vs H_done]  →  H_remaining = H_target − H_done
       │
@@ -460,7 +482,7 @@ Le mode éco est automatiquement suspendu (comportement normal) si :
 
 - **Anti-court-cycle** : 30 min minimum ON, 15 min minimum OFF
 - **Plages horaires** : 06h00 – 23h00 par défaut (configurable)
-- **Plafond journalier** : 18 h maximum
+- **Plafond journalier** : 18 h par défaut, configurable de 6 à 24 h
 - **Anti-régression** : l'objectif ne diminue jamais en cours de journée
 - **Capteur indisponible** : valeurs de repli, état `degraded` visible
 
@@ -490,8 +512,11 @@ Accessibles via **Paramètres → Intégrations → Pool Filtration → Configur
 | Heure de remise à zéro | 00:00 | Reset quotidien des compteurs |
 | Heure de début autorisée | 06h | Aucune commande de pompe avant cette heure |
 | Heure de fin autorisée | 23h | Aucune commande de pompe après cette heure |
+| **Plafond journalier** | **18 h** | **Maximum de filtration par jour (6–24 h)** |
+| **Facteur de correction** | **1.0** | **Multiplicateur sur H_min et H_dyn (0.5–2.0)** |
 | Intervalle cycle hivernage | 4 h | Temps entre deux cycles anti-gel |
 | Durée cycle hivernage | 60 min | Durée de chaque cycle anti-gel |
+| Durée boost nocturne | 2 h | Durée du boost forte fréquentation (0,5–6 h) |
 | Plages heures creuses | — | Une ou plusieurs plages HC (option A) — voir format ci-dessous |
 | Binary sensor HC | — | Entité `binary_sensor` indiquant les HC (option B, prioritaire) |
 | Interrupteur pompe | — | Remplace l'entité sélectionnée lors de l'installation |
