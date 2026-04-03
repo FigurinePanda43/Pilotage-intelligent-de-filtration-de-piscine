@@ -125,11 +125,13 @@ class PoolFiltrationCoordinator(DataUpdateCoordinator):
         await self.async_request_refresh()
 
     async def reset_daily_counters(self) -> None:
-        """Manually reset daily filtration counters (h_done, h_done_day, h_target)."""
-        self._h_done = 0.0
-        self._h_done_day = 0.0
+        """Manually reset the filtration target so it is recalculated on the next cycle.
+
+        Only h_target is cleared — h_done and h_done_day are preserved so the
+        record of filtration already performed today is not lost.
+        """
         self._h_target = 0.0
-        _LOGGER.info("Pool filtration: manual daily reset triggered")
+        _LOGGER.info("Pool filtration: manual target reset triggered")
         await self._save_persistent_data()
         await self.async_request_refresh()
 
