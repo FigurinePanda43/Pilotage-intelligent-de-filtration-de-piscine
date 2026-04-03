@@ -19,6 +19,7 @@ CONF_ALLOWED_END = "allowed_end"
 CONF_WINTER_CYCLE_HOURS = "winter_cycle_hours"
 CONF_WINTER_RUN_MINUTES = "winter_run_minutes"
 CONF_TARGET_FACTOR = "target_factor"
+CONF_MAX_FILTRATION_HOURS = "max_filtration_hours"
 
 # ---------------------------------------------------------------------------
 # Defaults
@@ -37,7 +38,8 @@ TARGET_FACTOR_MAX = 2.0
 # Filtration limits
 # ---------------------------------------------------------------------------
 MIN_FILTRATION_HOURS = 2.0
-MAX_FILTRATION_HOURS = 18.0
+MAX_FILTRATION_HOURS = 18.0          # used as default; configurable via CONF_MAX_FILTRATION_HOURS
+MAX_FILTRATION_HOURS_UPPER = 24.0   # absolute ceiling (cannot exceed 24 h/day)
 
 # ---------------------------------------------------------------------------
 # Anti-cycling

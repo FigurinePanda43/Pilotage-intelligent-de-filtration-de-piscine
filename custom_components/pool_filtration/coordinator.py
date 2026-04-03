@@ -41,6 +41,7 @@ from .const import (
     DEFAULT_WINTER_RUN_MINUTES,
     MIN_FILTRATION_HOURS,
     MAX_FILTRATION_HOURS,
+    CONF_MAX_FILTRATION_HOURS,
     MIN_ON_MINUTES,
     MIN_OFF_MINUTES,
     WATER_TEMP_AVG_HOURS,
@@ -197,15 +198,16 @@ class PoolFiltrationCoordinator(DataUpdateCoordinator):
         wind_avg = self._avg(self._wind_history) if self._wind_history else FALLBACK_WIND
 
         # Compute filtration targets
-        h_min = self._h_min(water_temp_avg)
-        h_dyn = self._h_dyn(water_temp_avg, uv_avg, wind_avg, air_temp_avg)
+        max_hours = self._max_hours()
+        h_min = self._h_min(water_temp_avg, max_hours)
+        h_dyn = self._h_dyn(water_temp_avg, uv_avg, wind_avg, air_temp_avg, max_hours)
 
         # Apply user correction factor (0.5–2.0, default 1.0)
         target_factor = float(
             self.config_entry.options.get(CONF_TARGET_FACTOR, DEFAULT_TARGET_FACTOR)
         )
-        h_min_adj = min(h_min * target_factor, MAX_FILTRATION_HOURS)
-        h_dyn_adj = min(h_dyn * target_factor, MAX_FILTRATION_HOURS)
+        h_min_adj = min(h_min * target_factor, max_hours)
+        h_dyn_adj = min(h_dyn * target_factor, max_hours)
 
         # Only ratchet h_target when we have at least one real temperature reading.
         # If the history is empty AND sensors are degraded (e.g. first cycle after
@@ -311,6 +313,7 @@ class PoolFiltrationCoordinator(DataUpdateCoordinator):
             # Targets
             "h_min": h_min,
             "h_dyn": h_dyn,
+            "max_hours": max_hours,
             "target_factor": target_factor,
             "h_min_adj": h_min_adj,
             "h_dyn_adj": h_dyn_adj,
@@ -362,9 +365,9 @@ class PoolFiltrationCoordinator(DataUpdateCoordinator):
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _h_min(water_temp_avg: float) -> float:
-        """H_min = clamp(T_eau / 2 ; 2 ; 16)."""
-        return max(MIN_FILTRATION_HOURS, min(16.0, water_temp_avg / 2.0))
+    def _h_min(water_temp_avg: float, max_hours: float) -> float:
+        """H_min = clamp(T_eau / 2 ; 2 ; max_hours)."""
+        return max(MIN_FILTRATION_HOURS, min(max_hours, water_temp_avg / 2.0))
 
     @staticmethod
     def _h_dyn(
@@ -372,14 +375,15 @@ class PoolFiltrationCoordinator(DataUpdateCoordinator):
         uv_avg: float,
         wind_avg: float,
         air_temp_avg: float,
+        max_hours: float,
     ) -> float:
-        """H_dyn = clamp(T/2 + UV_adj + Wind_adj + Air_adj ; 2 ; 18)."""
+        """H_dyn = clamp(T/2 + UV_adj + Wind_adj + Air_adj ; 2 ; max_hours)."""
         base = water_temp_avg / 2.0
         uv_adj = UV_COEFF * max(uv_avg - UV_THRESHOLD, 0.0)
         wind_adj = WIND_COEFF * max(wind_avg - WIND_THRESHOLD, 0.0)
         air_adj = AIR_TEMP_COEFF * max(air_temp_avg - AIR_TEMP_THRESHOLD, 0.0)
         return max(
-            MIN_FILTRATION_HOURS, min(MAX_FILTRATION_HOURS, base + uv_adj + wind_adj + air_adj)
+            MIN_FILTRATION_HOURS, min(max_hours, base + uv_adj + wind_adj + air_adj)
         )
 
     # ------------------------------------------------------------------
@@ -418,7 +422,7 @@ class PoolFiltrationCoordinator(DataUpdateCoordinator):
             )
 
         # ── Normal mode ──────────────────────────────────────────────────
-        if self._h_done >= MAX_FILTRATION_HOURS:
+        if self._h_done >= self._max_hours():
             return False, "daily_limit_reached"
 
         if h_remaining <= 0:
@@ -479,7 +483,7 @@ class PoolFiltrationCoordinator(DataUpdateCoordinator):
         is_off_peak: bool,
     ) -> tuple[bool, str]:
         """Eco mode decision: shift shiftable hours to off-peak, guard day minimum."""
-        if self._h_done >= MAX_FILTRATION_HOURS:
+        if self._h_done >= self._max_hours():
             return False, "daily_limit_reached"
 
         if h_remaining <= 0:
@@ -586,9 +590,10 @@ class PoolFiltrationCoordinator(DataUpdateCoordinator):
             # Cap to 2× scan interval to avoid huge jumps after restarts
             max_elapsed = DEFAULT_SCAN_INTERVAL * 2 / 60.0
             elapsed_h = min(elapsed_h, max_elapsed)
-            self._h_done = min(self._h_done + elapsed_h, MAX_FILTRATION_HOURS)
+            cap = self._max_hours()
+            self._h_done = min(self._h_done + elapsed_h, cap)
             if in_window:
-                self._h_done_day = min(self._h_done_day + elapsed_h, MAX_FILTRATION_HOURS)
+                self._h_done_day = min(self._h_done_day + elapsed_h, cap)
 
         self._last_state_check = now
         self._pump_was_on = pump_is_on
@@ -854,6 +859,12 @@ class PoolFiltrationCoordinator(DataUpdateCoordinator):
     # ------------------------------------------------------------------
     # Options helpers
     # ------------------------------------------------------------------
+
+    def _max_hours(self) -> float:
+        """Return the configured daily filtration ceiling (default 18 h)."""
+        return float(
+            self.config_entry.options.get(CONF_MAX_FILTRATION_HOURS, MAX_FILTRATION_HOURS)
+        )
 
     def _allowed_hours(self) -> tuple[int, int]:
         opts = self.config_entry.options

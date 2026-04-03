@@ -27,6 +27,7 @@
           "allowed_end": "Heure de fin autorisée",
           "winter_cycle_hours": "Intervalle entre cycles hivernage (heures)",
           "winter_run_minutes": "Durée d'un cycle hivernage (minutes)",
+          "max_filtration_hours": "Plafond journalier de filtration (heures, 6–24)",
           "target_factor": "Facteur de correction de l'objectif (0.5 = −50 %, 1.0 = neutre, 2.0 = +100 %)",
           "busy_boost_duration": "Durée du boost nocturne (heures) — Mode forte fréquentation",
           "eco_off_peak_slots": "Plages heures creuses (Option A) — ex : 22:00-06:00,12:00-14:00",

@@ -25,6 +25,9 @@ from .const import (
     DEFAULT_TARGET_FACTOR,
     TARGET_FACTOR_MIN,
     TARGET_FACTOR_MAX,
+    CONF_MAX_FILTRATION_HOURS,
+    MAX_FILTRATION_HOURS,
+    MAX_FILTRATION_HOURS_UPPER,
     CONF_ECO_OFF_PEAK_SLOTS,
     CONF_ECO_OFF_PEAK_SENSOR,
     CONF_BUSY_BOOST_DURATION,
@@ -145,6 +148,20 @@ class PoolFiltrationOptionsFlow(config_entries.OptionsFlow):
                     CONF_ALLOWED_END,
                     default=int(opts.get(CONF_ALLOWED_END, DEFAULT_ALLOWED_END)),
                 ): _num(1, 24),
+                # ── Plafond journalier ──────────────────────────────────────
+                vol.Optional(
+                    CONF_MAX_FILTRATION_HOURS,
+                    default=float(
+                        opts.get(CONF_MAX_FILTRATION_HOURS, MAX_FILTRATION_HOURS)
+                    ),
+                ): selector.NumberSelector(
+                    selector.NumberSelectorConfig(
+                        min=6.0,
+                        max=MAX_FILTRATION_HOURS_UPPER,
+                        step=0.5,
+                        mode=_SLIDER,
+                    )
+                ),
                 # ── Facteur de correction de l'objectif ────────────────────
                 vol.Optional(
                     CONF_TARGET_FACTOR,
