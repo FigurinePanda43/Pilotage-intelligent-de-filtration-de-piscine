@@ -209,13 +209,7 @@ class PoolFiltrationCoordinator(DataUpdateCoordinator):
         h_min_adj = min(h_min * target_factor, max_hours)
         h_dyn_adj = min(h_dyn * target_factor, max_hours)
 
-        # Only ratchet h_target when we have at least one real water-temp reading.
-        # If water_temp history is empty AND water temp is degraded, the average is
-        # the 20 °C fallback which would inflate h_target to 10 h. Other sensors
-        # (air, UV, wind) only reduce or leave h_dyn unchanged when they fall back,
-        # so they don't need to block the ratchet.
-        if self._water_temp_history or not wt_degraded:
-            self._h_target = max(self._h_target, h_min_adj, h_dyn_adj)
+        self._h_target = max(self._h_target, h_min_adj, h_dyn_adj)
 
         # Solar window – computed BEFORE accumulation so in_window is available
         solar_noon = self._solar_noon(now)
