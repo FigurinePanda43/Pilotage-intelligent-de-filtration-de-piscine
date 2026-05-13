@@ -65,6 +65,7 @@ from .const import (
     FALLBACK_AIR_TEMP,
     FALLBACK_UV,
     FALLBACK_WIND,
+    SCHEDULE_TOLERANCE_HOURS,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -260,7 +261,9 @@ class PoolFiltrationCoordinator(DataUpdateCoordinator):
         # ── Delay status ─────────────────────────────────────────────────
         if h_remaining > 0 and in_window and time_remaining_window > 0:
             delay_status = (
-                "late" if h_remaining > time_remaining_window else "on_time"
+                "late"
+                if h_remaining > time_remaining_window + SCHEDULE_TOLERANCE_HOURS
+                else "on_time"
             )
         elif h_remaining > 0 and now > window_end:
             delay_status = "late"
