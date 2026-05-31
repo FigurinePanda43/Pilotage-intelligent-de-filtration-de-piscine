@@ -217,8 +217,9 @@ class PoolFiltrationCoordinator(DataUpdateCoordinator):
         window_start = solar_noon - timedelta(hours=SOLAR_WINDOW_HOURS)
         window_end = solar_noon + timedelta(hours=SOLAR_WINDOW_HOURS)
         in_window = window_start <= now <= window_end
-        time_remaining_window = max(
-            0.0, (window_end - now).total_seconds() / 3600.0
+        time_remaining_window = (
+            max(0.0, (window_end - now).total_seconds() / 3600.0)
+            if in_window else 0.0
         )
 
         # Busy mode – night boost window (centered on solar midnight)
