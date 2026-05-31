@@ -212,14 +212,23 @@ class PoolFiltrationCoordinator(DataUpdateCoordinator):
 
         self._h_target = max(self._h_target, h_min_adj, h_dyn_adj)
 
-        # Solar window – computed BEFORE accumulation so in_window is available
+        # Solar window – used for eco h_done_day tracking and h_day_min_prog
         solar_noon = self._solar_noon(now)
         window_start = solar_noon - timedelta(hours=SOLAR_WINDOW_HOURS)
         window_end = solar_noon + timedelta(hours=SOLAR_WINDOW_HOURS)
         in_window = window_start <= now <= window_end
+
+        # Centered run block – pump scheduling is based on this, not the solar window.
+        # The block is h_target wide and centered on solar noon, so the pump runs
+        # symmetrically around midday.  If h_target > solar window the block extends
+        # before sunrise / after sunset.
+        half_run = self._h_target / 2.0
+        run_start = solar_noon - timedelta(hours=half_run)
+        run_end = solar_noon + timedelta(hours=half_run)
+        in_run_block = run_start <= now <= run_end
         time_remaining_window = (
-            max(0.0, (window_end - now).total_seconds() / 3600.0)
-            if in_window else 0.0
+            max(0.0, (run_end - now).total_seconds() / 3600.0)
+            if in_run_block else 0.0
         )
 
         # Busy mode – night boost window (centered on solar midnight)
@@ -250,8 +259,8 @@ class PoolFiltrationCoordinator(DataUpdateCoordinator):
         eco_allowed = (
             self._eco_mode
             and not self._winter_mode
-            # No critical catch-up in progress (only relevant inside the window)
-            and not (in_window and time_remaining_window > 0 and h_remaining > time_remaining_window)
+            # No critical catch-up in progress (only inside the run block)
+            and not (in_run_block and time_remaining_window > 0 and h_remaining > time_remaining_window)
             # Environmental conditions are moderate
             and water_temp <= ECO_TEMP_THRESHOLD
             and uv_avg <= ECO_UV_THRESHOLD
@@ -260,13 +269,13 @@ class PoolFiltrationCoordinator(DataUpdateCoordinator):
         )
 
         # ── Delay status ─────────────────────────────────────────────────
-        if h_remaining > 0 and in_window and time_remaining_window > 0:
+        if h_remaining > 0 and in_run_block and time_remaining_window > 0:
             delay_status = (
                 "late"
                 if h_remaining > time_remaining_window + SCHEDULE_TOLERANCE_HOURS
                 else "on_time"
             )
-        elif h_remaining > 0 and now > window_end:
+        elif h_remaining > 0 and now > run_end:
             delay_status = "late"
         else:
             delay_status = "on_time"
@@ -282,8 +291,8 @@ class PoolFiltrationCoordinator(DataUpdateCoordinator):
             now=now,
             h_remaining=h_remaining,
             in_window=in_window,
-            time_remaining_window=time_remaining_window,
-            window_end=window_end,
+            in_run_block=in_run_block,
+            run_end=run_end,
             frost_condition=frost_condition,
             eco_allowed=eco_allowed,
             h_day_min=h_day_min,
@@ -319,11 +328,15 @@ class PoolFiltrationCoordinator(DataUpdateCoordinator):
             "h_target": self._h_target,
             "h_done": self._h_done,
             "h_remaining": h_remaining,
-            # Solar window
+            # Solar window (informational / eco tracking)
             "solar_noon": solar_noon,
             "window_start": window_start,
             "window_end": window_end,
             "in_window": in_window,
+            # Centered run block (drives pump scheduling)
+            "run_start": run_start,
+            "run_end": run_end,
+            "in_run_block": in_run_block,
             "time_remaining_window": time_remaining_window,
             # Decision
             "pump_is_on": pump_is_on,
@@ -394,8 +407,8 @@ class PoolFiltrationCoordinator(DataUpdateCoordinator):
         now: datetime,
         h_remaining: float,
         in_window: bool,
-        time_remaining_window: float,
-        window_end: datetime,
+        in_run_block: bool,
+        run_end: datetime,
         frost_condition: bool,
         eco_allowed: bool,
         h_day_min: float,
@@ -417,10 +430,13 @@ class PoolFiltrationCoordinator(DataUpdateCoordinator):
         # 3. Eco mode (only when eco_allowed; otherwise fall through to normal logic)
         if eco_allowed:
             return self._decide_eco(
-                now, h_remaining, window_end, h_shiftable_remaining, is_off_peak,
+                now, h_remaining, run_end, h_shiftable_remaining, is_off_peak,
             )
 
-        # ── Normal mode ──────────────────────────────────────────────────
+        # ── Normal mode – centered run block ─────────────────────────────
+        # The pump runs inside a block of h_target hours centered on solar noon.
+        # If h_target exceeds the solar window the block extends symmetrically
+        # before/after: no artificial early start, no skewed evening catchup.
         if self._h_done >= self._max_hours():
             return False, "daily_limit_reached"
 
@@ -428,27 +444,26 @@ class PoolFiltrationCoordinator(DataUpdateCoordinator):
             return False, "target_reached"
 
         allowed_start, allowed_end = self._allowed_hours()
-        current_hour = now.hour
 
-        cond1 = in_window and h_remaining > 0
-        # cond2: inside the window we're going to run out of time → start catching up.
-        # Intentionally restricted to in_window to avoid starting the pump hours before
-        # sunrise just because h_target exceeds the window duration.
-        cond2 = in_window and time_remaining_window > 0 and h_remaining > time_remaining_window
-        cond3 = now >= window_end and self._h_done < self._h_target
+        # Inside the centered block
+        cond_run = in_run_block and h_remaining > 0
+        # Past the end of the block with hours still remaining (e.g. block was
+        # clipped by allowed_start, or h_target grew late in the day)
+        cond_catchup = now > run_end and self._h_done < self._h_target
 
-        if not (cond1 or cond2 or cond3):
+        if not (cond_run or cond_catchup):
             return False, "idle"
 
-        inside_allowed = allowed_start <= current_hour < allowed_end
-        if not inside_allowed and not cond3:
+        if not (allowed_start <= now.hour < allowed_end):
             return False, "outside_hours"
 
-        if cond3:
+        if cond_catchup:
             return True, "end_of_day_catchup"
-        if cond2:
-            return True, "catching_up_delay"
-        return True, "solar_window"
+
+        # Distinguish: inside solar window (peak efficiency) vs outside (symmetric extension)
+        if in_window:
+            return True, "solar_window"
+        return True, "catching_up_delay"
 
     def _decide_winter(self, now: datetime, frost_condition: bool) -> tuple[bool, str]:
         """Winter mode: run anti-freeze cycles when frost is detected, OFF otherwise."""
@@ -480,7 +495,7 @@ class PoolFiltrationCoordinator(DataUpdateCoordinator):
         self,
         now: datetime,
         h_remaining: float,
-        window_end: datetime,
+        run_end: datetime,
         h_shiftable_remaining: float,
         is_off_peak: bool,
     ) -> tuple[bool, str]:
@@ -495,7 +510,7 @@ class PoolFiltrationCoordinator(DataUpdateCoordinator):
         current_hour = now.hour
 
         # Safety: end-of-day catch-up always overrides eco preference
-        if now >= window_end and self._h_done < self._h_target:
+        if now >= run_end and self._h_done < self._h_target:
             if allowed_start <= current_hour < allowed_end:
                 return True, "end_of_day_catchup"
 
