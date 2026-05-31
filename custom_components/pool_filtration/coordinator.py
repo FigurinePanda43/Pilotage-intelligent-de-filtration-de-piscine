@@ -249,8 +249,8 @@ class PoolFiltrationCoordinator(DataUpdateCoordinator):
         eco_allowed = (
             self._eco_mode
             and not self._winter_mode
-            # No critical catch-up in progress
-            and not (time_remaining_window > 0 and h_remaining > time_remaining_window)
+            # No critical catch-up in progress (only relevant inside the window)
+            and not (in_window and time_remaining_window > 0 and h_remaining > time_remaining_window)
             # Environmental conditions are moderate
             and water_temp <= ECO_TEMP_THRESHOLD
             and uv_avg <= ECO_UV_THRESHOLD
@@ -430,7 +430,10 @@ class PoolFiltrationCoordinator(DataUpdateCoordinator):
         current_hour = now.hour
 
         cond1 = in_window and h_remaining > 0
-        cond2 = time_remaining_window > 0 and h_remaining > time_remaining_window
+        # cond2: inside the window we're going to run out of time → start catching up.
+        # Intentionally restricted to in_window to avoid starting the pump hours before
+        # sunrise just because h_target exceeds the window duration.
+        cond2 = in_window and time_remaining_window > 0 and h_remaining > time_remaining_window
         cond3 = now >= window_end and self._h_done < self._h_target
 
         if not (cond1 or cond2 or cond3):
