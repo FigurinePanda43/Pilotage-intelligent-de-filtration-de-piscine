@@ -73,6 +73,7 @@ from .const import (
     NOTIF_LEVEL_INTERMEDIATE,
     NOTIF_LEVEL_DETAILED,
     NOTIF_PRIORITY,
+    SENSOR_NOTIF_GRACE_MINUTES,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -120,6 +121,8 @@ class PoolFiltrationCoordinator(DataUpdateCoordinator):
         # Notification tracking
         self._prev_pump_on: bool | None = None
         self._prev_sensor_degraded: dict[str, bool] = {}
+        self._sensor_degraded_since: dict[str, datetime] = {}
+        self._sensor_notif_sent: dict[str, bool] = {}
 
     # ------------------------------------------------------------------
     # Public helpers (called from switch entity)
@@ -183,18 +186,37 @@ class PoolFiltrationCoordinator(DataUpdateCoordinator):
         wind, wind_degraded = self._read_wind_with_flag()
         degraded = wt_degraded or at_degraded or uv_degraded or wind_degraded
 
-        # Track sensor availability changes for notifications (sent after averages computed)
+        # Track sensor availability changes for notifications (sent after averages computed).
+        # A "degraded" notification is only sent after SENSOR_NOTIF_GRACE_MINUTES of
+        # continuous unavailability to avoid false alarms on HA restarts.
         _sensor_now = {
             "Température eau": wt_degraded,
             "Température air": at_degraded,
             "UV": uv_degraded,
             "Vent": wind_degraded,
         }
-        _sensor_changes = {
-            name: is_deg
-            for name, is_deg in _sensor_now.items()
-            if is_deg != self._prev_sensor_degraded.get(name, False)
-        }
+        _sensor_to_notify: dict[str, bool] = {}  # name → True=degraded, False=recovered
+
+        for name, is_deg in _sensor_now.items():
+            was_deg = self._prev_sensor_degraded.get(name, False)
+            if is_deg and not was_deg:
+                # Just became degraded – start grace period
+                self._sensor_degraded_since[name] = now
+                self._sensor_notif_sent[name] = False
+            elif is_deg and was_deg:
+                # Still degraded – notify once after grace period
+                if not self._sensor_notif_sent.get(name, False):
+                    deg_since = self._sensor_degraded_since.get(name)
+                    if deg_since and (now - deg_since).total_seconds() >= SENSOR_NOTIF_GRACE_MINUTES * 60:
+                        _sensor_to_notify[name] = True
+                        self._sensor_notif_sent[name] = True
+            elif not is_deg and was_deg:
+                # Recovered – notify only if the degraded notification was sent
+                if self._sensor_notif_sent.get(name, False):
+                    _sensor_to_notify[name] = False
+                self._sensor_degraded_since.pop(name, None)
+                self._sensor_notif_sent[name] = False
+
         self._prev_sensor_degraded = _sensor_now
 
         # Prune stale entries every cycle regardless of sensor availability.
@@ -337,13 +359,14 @@ class PoolFiltrationCoordinator(DataUpdateCoordinator):
         # ── Notifications ────────────────────────────────────────────────
         temp_str = f"{water_temp_avg:.1f} °C" if self._water_temp_history else "indisponible"
 
-        # Sensor availability changes
-        for sensor_name, became_degraded in _sensor_changes.items():
+        # Sensor availability changes (only after grace period)
+        for sensor_name, became_degraded in _sensor_to_notify.items():
             if became_degraded:
                 await self._notify(
                     NOTIF_LEVEL_INTERMEDIATE,
                     "⚠️ Capteur indisponible",
-                    f"Le capteur '{sensor_name}' est indisponible.\n"
+                    f"Le capteur '{sensor_name}' est indisponible depuis "
+                    f"{SENSOR_NOTIF_GRACE_MINUTES} min.\n"
                     "L'intégration utilise une valeur de repli pour l'objectif.",
                 )
             else:
@@ -1037,6 +1060,28 @@ class PoolFiltrationCoordinator(DataUpdateCoordinator):
         self._last_state_check = _parse_dt("last_state_check")
         self._last_winter_cycle = _parse_dt("last_winter_cycle")
 
+        # Restore rolling average histories so the first cycle after restart uses
+        # real historical data instead of hardcoded fallback values.
+        now_load = dt_util.now()
+
+        def _restore_history(key: str, window_hours: float) -> deque:
+            cutoff = now_load - timedelta(hours=window_hours)
+            result: deque = deque()
+            for entry in data.get(key, []):
+                try:
+                    ts = datetime.fromisoformat(entry[0])
+                    val = float(entry[1])
+                    if ts > cutoff:
+                        result.append((ts, val))
+                except (ValueError, TypeError, IndexError):
+                    pass
+            return result
+
+        self._water_temp_history = _restore_history("water_temp_history", WATER_TEMP_AVG_HOURS)
+        self._air_temp_history = _restore_history("air_temp_history", AIR_TEMP_AVG_HOURS)
+        self._uv_history = _restore_history("uv_history", UV_AVG_HOURS)
+        self._wind_history = _restore_history("wind_history", WIND_AVG_HOURS)
+
         _LOGGER.debug(
             "Loaded persistent data: h_target=%.2f h_done=%.2f winter=%s",
             self._h_target,
@@ -1047,6 +1092,9 @@ class PoolFiltrationCoordinator(DataUpdateCoordinator):
     async def _save_persistent_data(self) -> None:
         def _iso(dt: datetime | None) -> str | None:
             return dt.isoformat() if dt else None
+
+        def _history(h: deque) -> list:
+            return [[ts.isoformat(), val] for ts, val in h]
 
         await self._store.async_save(
             {
@@ -1062,5 +1110,11 @@ class PoolFiltrationCoordinator(DataUpdateCoordinator):
                 "last_commanded_off": _iso(self._last_commanded_off),
                 "last_state_check": _iso(self._last_state_check),
                 "last_winter_cycle": _iso(self._last_winter_cycle),
+                # Rolling average histories – restored on restart to avoid cold-start
+                # with hardcoded fallback values
+                "water_temp_history": _history(self._water_temp_history),
+                "air_temp_history": _history(self._air_temp_history),
+                "uv_history": _history(self._uv_history),
+                "wind_history": _history(self._wind_history),
             }
         )

@@ -128,6 +128,7 @@ NOTIF_PRIORITY: dict[str, int] = {
     NOTIF_LEVEL_INTERMEDIATE: 2,
     NOTIF_LEVEL_DETAILED: 3,
 }
+SENSOR_NOTIF_GRACE_MINUTES = 30  # delay before notifying a degraded sensor
 
 # ---------------------------------------------------------------------------
 # Persistent storage
