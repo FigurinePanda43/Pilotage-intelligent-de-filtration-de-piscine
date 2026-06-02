@@ -111,6 +111,25 @@ BUSY_BOOST_MAX_HOURS = 6.0
 SCHEDULE_TOLERANCE_HOURS = 0.5   # 30 min – grace margin before "late"
 
 # ---------------------------------------------------------------------------
+# Notifications
+# ---------------------------------------------------------------------------
+CONF_NOTIFICATION_TARGETS = "notification_targets"
+CONF_NOTIFICATION_LEVEL = "notification_level"
+
+NOTIF_LEVEL_NONE = "none"
+NOTIF_LEVEL_CRITICAL = "critical"
+NOTIF_LEVEL_INTERMEDIATE = "intermediate"
+NOTIF_LEVEL_DETAILED = "detailed"
+DEFAULT_NOTIFICATION_LEVEL = NOTIF_LEVEL_NONE
+
+NOTIF_PRIORITY: dict[str, int] = {
+    NOTIF_LEVEL_NONE: 0,
+    NOTIF_LEVEL_CRITICAL: 1,
+    NOTIF_LEVEL_INTERMEDIATE: 2,
+    NOTIF_LEVEL_DETAILED: 3,
+}
+
+# ---------------------------------------------------------------------------
 # Persistent storage
 # ---------------------------------------------------------------------------
 STORAGE_VERSION = 1

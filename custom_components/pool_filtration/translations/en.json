@@ -30,6 +30,8 @@
           "max_filtration_hours": "Daily filtration ceiling (hours, 6–24)",
           "target_factor": "Filtration target correction factor (0.5 = −50 %, 1.0 = neutral, 2.0 = +100 %)",
           "busy_boost_duration": "Night boost duration (hours) — Busy mode",
+          "notification_level": "Notification level",
+          "notification_targets": "Notification targets (comma-separated) — e.g. notify.mobile_app_iphone",
           "eco_off_peak_slots": "Off-peak time slots (Option A) — e.g. 22:00-06:00,12:00-14:00",
           "eco_off_peak_sensor": "Off-peak binary sensor (Option B — takes priority)",
           "pump_switch": "Pump switch (override)",
@@ -112,6 +114,16 @@
     },
     "button": {
       "reset_counters": { "name": "Reset daily counters" }
+    }
+  },
+  "selector": {
+    "notification_level": {
+      "options": {
+        "none": "Disabled",
+        "critical": "Critical – pump command failures only",
+        "intermediate": "Intermediate – critical + sensors + unexpected stops",
+        "detailed": "Detailed – everything (start, stop, sensors)"
+      }
     }
   }
 }

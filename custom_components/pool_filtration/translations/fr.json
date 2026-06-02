@@ -30,6 +30,8 @@
           "max_filtration_hours": "Plafond journalier de filtration (heures, 6–24)",
           "target_factor": "Facteur de correction de l'objectif (0.5 = −50 %, 1.0 = neutre, 2.0 = +100 %)",
           "busy_boost_duration": "Durée du boost nocturne (heures) — Mode forte fréquentation",
+          "notification_level": "Niveau de notification",
+          "notification_targets": "Appareils de notification (séparés par des virgules) — ex : notify.mobile_app_iphone",
           "eco_off_peak_slots": "Plages heures creuses (Option A) — ex : 22:00-06:00,12:00-14:00",
           "eco_off_peak_sensor": "Binary sensor heures creuses (Option B — prioritaire)",
           "pump_switch": "Interrupteur de la pompe (remplacement)",
@@ -112,6 +114,16 @@
     },
     "button": {
       "reset_counters": { "name": "Réinitialiser les compteurs journaliers" }
+    }
+  },
+  "selector": {
+    "notification_level": {
+      "options": {
+        "none": "Désactivé",
+        "critical": "Critique – échecs pompe uniquement",
+        "intermediate": "Intermédiaire – critique + capteurs + arrêts inattendus",
+        "detailed": "Détaillé – tout (démarrages, arrêts, capteurs)"
+      }
     }
   }
 }

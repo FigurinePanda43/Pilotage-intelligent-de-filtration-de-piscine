@@ -66,6 +66,13 @@ from .const import (
     FALLBACK_UV,
     FALLBACK_WIND,
     SCHEDULE_TOLERANCE_HOURS,
+    CONF_NOTIFICATION_TARGETS,
+    CONF_NOTIFICATION_LEVEL,
+    NOTIF_LEVEL_NONE,
+    NOTIF_LEVEL_CRITICAL,
+    NOTIF_LEVEL_INTERMEDIATE,
+    NOTIF_LEVEL_DETAILED,
+    NOTIF_PRIORITY,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -109,6 +116,10 @@ class PoolFiltrationCoordinator(DataUpdateCoordinator):
         self._busy_mode: bool = False
 
         self._persistent_loaded: bool = False
+
+        # Notification tracking
+        self._prev_pump_on: bool | None = None
+        self._prev_sensor_degraded: dict[str, bool] = {}
 
     # ------------------------------------------------------------------
     # Public helpers (called from switch entity)
@@ -171,6 +182,20 @@ class PoolFiltrationCoordinator(DataUpdateCoordinator):
         uv, uv_degraded = self._read_state_with_flag(CONF_UV_SENSOR, FALLBACK_UV)
         wind, wind_degraded = self._read_wind_with_flag()
         degraded = wt_degraded or at_degraded or uv_degraded or wind_degraded
+
+        # Track sensor availability changes for notifications (sent after averages computed)
+        _sensor_now = {
+            "Température eau": wt_degraded,
+            "Température air": at_degraded,
+            "UV": uv_degraded,
+            "Vent": wind_degraded,
+        }
+        _sensor_changes = {
+            name: is_deg
+            for name, is_deg in _sensor_now.items()
+            if is_deg != self._prev_sensor_degraded.get(name, False)
+        }
+        self._prev_sensor_degraded = _sensor_now
 
         # Prune stale entries every cycle regardless of sensor availability.
         # This ensures the last-known-value fallback is bounded to the history
@@ -237,6 +262,8 @@ class PoolFiltrationCoordinator(DataUpdateCoordinator):
 
         # Accumulate pump run-time (tracks in-window time separately for eco)
         pump_is_on = self._read_pump_state()
+        _pump_just_started = (self._prev_pump_on is not None) and pump_is_on and not self._prev_pump_on
+        _pump_just_stopped = (self._prev_pump_on is not None) and not pump_is_on and self._prev_pump_on
         self._accumulate_run_time(now, pump_is_on, in_window)
 
         h_remaining = max(0.0, self._h_target - self._h_done)
@@ -306,6 +333,56 @@ class PoolFiltrationCoordinator(DataUpdateCoordinator):
 
         await self._apply_decision(now, pump_is_on, pump_should_be_on)
         await self._save_persistent_data()
+
+        # ── Notifications ────────────────────────────────────────────────
+        temp_str = f"{water_temp_avg:.1f} °C" if self._water_temp_history else "indisponible"
+
+        # Sensor availability changes
+        for sensor_name, became_degraded in _sensor_changes.items():
+            if became_degraded:
+                await self._notify(
+                    NOTIF_LEVEL_INTERMEDIATE,
+                    "⚠️ Capteur indisponible",
+                    f"Le capteur '{sensor_name}' est indisponible.\n"
+                    "L'intégration utilise une valeur de repli pour l'objectif.",
+                )
+            else:
+                await self._notify(
+                    NOTIF_LEVEL_INTERMEDIATE,
+                    "✅ Capteur rétabli",
+                    f"Le capteur '{sensor_name}' est de nouveau disponible.",
+                )
+
+        # Pump state changes
+        if _pump_just_started:
+            await self._notify(
+                NOTIF_LEVEL_DETAILED,
+                "✅ Pompe démarrée",
+                f"Pompe démarrée à {now.strftime('%H:%M')}.\n"
+                f"Temp. eau : {temp_str} · Objectif : {self._h_target:.1f} h",
+            )
+        elif _pump_just_stopped:
+            commanded_off_recently = (
+                self._last_commanded_off is not None
+                and (now - self._last_commanded_off).total_seconds() < 1200
+            )
+            if commanded_off_recently:
+                await self._notify(
+                    NOTIF_LEVEL_DETAILED,
+                    "🏁 Pompe arrêtée",
+                    f"Pompe arrêtée à {now.strftime('%H:%M')}.\n"
+                    f"Filtration : {self._h_done:.1f} h / {self._h_target:.1f} h. Temp. eau : {temp_str}",
+                )
+            else:
+                await self._notify(
+                    NOTIF_LEVEL_INTERMEDIATE,
+                    "⚠️ Arrêt inattendu de la pompe",
+                    f"La pompe s'est arrêtée de façon inattendue à {now.strftime('%H:%M')}.\n"
+                    f"Filtration : {self._h_done:.1f} h / {self._h_target:.1f} h prévues. Temp. eau : {temp_str}",
+                )
+
+        self._prev_pump_on = pump_is_on
+        # ─────────────────────────────────────────────────────────────────
 
         return {
             # Raw readings
@@ -584,6 +661,45 @@ class PoolFiltrationCoordinator(DataUpdateCoordinator):
             _LOGGER.info("Pool pump: %s", "ON" if turn_on else "OFF")
         except Exception as exc:  # noqa: BLE001
             _LOGGER.error("Failed to %s pool pump: %s", service, exc)
+            await self._notify(
+                NOTIF_LEVEL_CRITICAL,
+                "🚨 Pompe – échec commande",
+                f"Impossible de {'démarrer' if turn_on else 'arrêter'} la pompe.\nErreur : {exc}",
+            )
+
+    # ------------------------------------------------------------------
+    # Notifications
+    # ------------------------------------------------------------------
+
+    async def _notify(self, level: str, title: str, message: str) -> None:
+        """Send a push notification if the configured level is sufficient."""
+        config_level = self.config_entry.options.get(
+            CONF_NOTIFICATION_LEVEL, NOTIF_LEVEL_NONE
+        )
+        if NOTIF_PRIORITY.get(config_level, 0) < NOTIF_PRIORITY.get(level, 99):
+            return
+
+        targets_raw = self.config_entry.options.get(CONF_NOTIFICATION_TARGETS, "")
+        targets = [t.strip() for t in targets_raw.split(",") if t.strip()]
+        if not targets:
+            _LOGGER.debug("Pool filtration: notification skipped – no targets configured")
+            return
+
+        for target in targets:
+            if "." in target:
+                domain, svc = target.split(".", 1)
+            else:
+                domain, svc = "notify", target
+            try:
+                await self.hass.services.async_call(
+                    domain, svc,
+                    {"title": title, "message": message},
+                    blocking=False,
+                )
+            except Exception as exc:  # noqa: BLE001
+                _LOGGER.warning(
+                    "Pool filtration: notification failed (%s.%s): %s", domain, svc, exc
+                )
 
     # ------------------------------------------------------------------
     # Pump run-time tracking

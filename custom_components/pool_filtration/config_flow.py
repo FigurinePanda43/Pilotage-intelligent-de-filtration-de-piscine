@@ -39,6 +39,13 @@ from .const import (
     DEFAULT_ALLOWED_END,
     DEFAULT_WINTER_CYCLE_HOURS,
     DEFAULT_WINTER_RUN_MINUTES,
+    CONF_NOTIFICATION_TARGETS,
+    CONF_NOTIFICATION_LEVEL,
+    NOTIF_LEVEL_NONE,
+    NOTIF_LEVEL_CRITICAL,
+    NOTIF_LEVEL_INTERMEDIATE,
+    NOTIF_LEVEL_DETAILED,
+    DEFAULT_NOTIFICATION_LEVEL,
 )
 
 _SLIDER = "slider"
@@ -201,6 +208,28 @@ class PoolFiltrationOptionsFlow(config_entries.OptionsFlow):
                         mode=_SLIDER,
                     )
                 ),
+                # ── Notifications ──────────────────────────────────────────
+                vol.Optional(
+                    CONF_NOTIFICATION_LEVEL,
+                    default=opts.get(CONF_NOTIFICATION_LEVEL, DEFAULT_NOTIFICATION_LEVEL),
+                ): selector.SelectSelector(
+                    selector.SelectSelectorConfig(
+                        options=[
+                            NOTIF_LEVEL_NONE,
+                            NOTIF_LEVEL_CRITICAL,
+                            NOTIF_LEVEL_INTERMEDIATE,
+                            NOTIF_LEVEL_DETAILED,
+                        ],
+                        mode=selector.SelectSelectorMode.LIST,
+                        translation_key="notification_level",
+                    )
+                ),
+                vol.Optional(
+                    CONF_NOTIFICATION_TARGETS,
+                    description={
+                        "suggested_value": opts.get(CONF_NOTIFICATION_TARGETS, "")
+                    },
+                ): selector.TextSelector(selector.TextSelectorConfig()),
                 # ── Eco – heures creuses ────────────────────────────────────
                 vol.Optional(
                     CONF_ECO_OFF_PEAK_SLOTS,
