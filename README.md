@@ -23,7 +23,7 @@ Cette intégration calcule en continu le besoin réel de filtration en fonction 
 - **La vitesse du vent** → dispersion de contaminants
 - **La température extérieure** → charge thermique sur l'eau
 
-Elle décide ensuite **quand faire tourner la pompe**, en priorisant la fenêtre solaire du midi et en rattrapant les retards en fin de journée.
+Elle décide ensuite **quand faire tourner la pompe**, en centrant la filtration sur le midi solaire et en rattrapant les retards en fin de journée.
 
 ---
 
@@ -48,6 +48,8 @@ Avant tout calcul, les capteurs sont lissés pour éviter les réactions à des 
 > Exemple : si l'UV passe à 9 pendant 5 minutes puis redescend à 3, la moyenne 1 h ne bougera presque pas.
 > Le système ne sursautera pas.
 
+**Persistance des historiques** : les historiques sont sauvegardés dans le stockage HA toutes les 10 minutes. Après un redémarrage, les moyennes sont restaurées immédiatement à partir des vraies données historiques, sans passer par les valeurs de repli.
+
 ---
 
 ### Niveau 2 — Calcul du besoin journalier
@@ -55,13 +57,13 @@ Avant tout calcul, les capteurs sont lissés pour éviter les réactions à des 
 #### 2a. Objectif minimal — `H_min`
 
 ```
-H_min = clamp(T_eau_moy_3h / 2 ; 2 h ; 16 h)
+H_min = clamp(T_eau_moy_3h / 2 ; 2 h ; plafond)
 ```
 
 C'est la règle de base de la filtration piscine : **diviser la température de l'eau par 2**.
 - Eau à 20 °C → 10 h de filtration minimum
 - Eau à 28 °C → 14 h
-- Jamais moins de 2 h (même en hiver), jamais plus de 16 h via ce seul paramètre
+- Jamais moins de 2 h (même en hiver), jamais plus que le plafond configuré
 
 C'est le **plancher absolu**. Le système ne descendra jamais en dessous.
 
@@ -75,7 +77,7 @@ H_dyn = clamp(
     + 0.20 × max(UV − 3, 0)
     + 0.04 × max(Vent − 15, 0)
     + 0.12 × max(T_air − 26, 0)
-; 2 h ; 18 h)
+; 2 h ; plafond)
 ```
 
 `H_dyn` **ajuste le besoin vers le haut** selon trois facteurs aggravants :
@@ -136,43 +138,47 @@ Pourquoi ? Si une canicule arrive à 14h alors que l'objectif du matin était de
 C'est une protection contre la sous-filtration accidentelle.
 
 La remise à zéro s'effectue chaque jour à l'heure configurée (par défaut 00:00).
-Un **bouton de réinitialisation** (`button.pool_filtration_reset_daily_counters`) permet de remettre l'objectif à zéro manuellement sans attendre minuit — utile si l'objectif a été gonflé par erreur (redémarrage avec capteurs indisponibles, etc.).
+Un **bouton de réinitialisation** (`button.pool_filtration_reset_daily_counters`) permet de remettre l'objectif à zéro manuellement sans attendre minuit — utile si l'objectif a été gonflé par erreur.
 
 ---
 
-### Niveau 3 — Décision ON/OFF
+### Niveau 3 — Décision ON/OFF (bloc centré sur le midi solaire)
 
-Toutes les 10 minutes, le système vérifie si la pompe doit tourner. Trois conditions indépendantes peuvent déclencher la mise en marche :
-
-#### Fenêtre solaire prioritaire
+Le cœur du planificateur est un **bloc de filtration de durée `H_target`, centré sur le midi solaire** :
 
 ```
-Fenêtre = [zénith_solaire − 4 h  ;  zénith_solaire + 4 h]
+run_start = midi_solaire − H_target / 2
+run_end   = midi_solaire + H_target / 2
 ```
 
-Le zénith solaire est calculé dynamiquement à partir de la position géographique de Home Assistant.
-Pour une position en France métropolitaine en été, cela correspond environ à **10h00 – 18h00**.
+Le midi solaire est calculé dynamiquement à partir des coordonnées GPS de Home Assistant. En France métropolitaine en été, il se situe autour de **13h30–14h00**.
 
-Si la pompe a encore du temps à faire (`H_remaining > 0`) et que l'on est dans cette fenêtre → elle tourne.
-C'est le cas nominal. La filtration se fait naturellement autour du moment où le soleil est le plus intense.
+#### Exemples (midi solaire à 13h37)
 
-#### Rattrapage critique
+| H_target | Démarrage | Arrêt |
+|----------|-----------|-------|
+| 8 h | 09:37 | 17:37 (= fenêtre solaire exacte) |
+| 10 h | 08:37 | 18:37 |
+| 12 h | 07:37 | 19:37 |
+| 14 h | 06:37 | 20:37 |
+| 16 h | 05:37 | 21:37 |
 
-```
-H_remaining > temps_restant_dans_la_fenêtre
-```
+Si `H_target` dépasse la durée de la fenêtre solaire (8 h par défaut), le bloc s'étend **symétriquement** avant le lever et après le coucher du soleil — jamais de démarrage unilatéral à 5 h du matin.
 
-Si le temps restant à filtrer est supérieur au temps qu'il reste dans la fenêtre solaire, la pompe tourne **même si elle était prévue s'arrêter** — pour éviter de sortir de la fenêtre avec un retard irrécupérable.
-
-> Exemple : 3 h restantes, 2 h avant la fin de la fenêtre → la pompe tourne sans s'arrêter.
+Si `H_target` augmente en cours de journée (ratchet), `run_end` se décale automatiquement vers le soir.
 
 #### Rattrapage fin de journée
 
+Si la pompe n'a pas pu effectuer les heures prévues dans le bloc (coupure, heure autorisée dépassée, redémarrage), elle continue de tourner **après `run_end`** jusqu'à atteindre l'objectif, dans la limite de la plage horaire autorisée.
+
+#### Statut du planning
+
 ```
-heure > fin_de_fenêtre  ET  H_done < H_target
+H_remaining > temps_restant_dans_le_bloc + 30 min  →  "En retard"
+H_remaining ≤ temps_restant_dans_le_bloc + 30 min  →  "À l'heure"
 ```
 
-Après la fenêtre solaire, si l'objectif n'est pas atteint, la pompe continue de tourner hors fenêtre jusqu'à combler le retard, dans la limite de la plage horaire autorisée (06h00–23h00 par défaut).
+Une tolérance de 30 minutes évite les basculements intempestifs pour un écart mineur.
 
 ---
 
@@ -187,6 +193,7 @@ Ces règles s'appliquent **par-dessus** la décision logique, comme des verrous 
 | Plafond journalier | 18 h (**configurable** 6–24 h) | Évite la surconsommation en cas de bug capteur |
 | Plage horaire | 06h–23h | Évite de faire tourner la pompe la nuit (bruit, tarif) |
 | Anti-régression | — | `H_target` ne peut que croître dans la journée |
+| Capteur indisponible | valeur de repli + historique persisté | Fonctionnement dégradé sans interruption |
 
 ---
 
@@ -195,7 +202,7 @@ Ces règles s'appliquent **par-dessus** la décision logique, comme des verrous 
 ```
 [Capteurs bruts]
       │
-      ▼  lissage (moyenne glissante 1h / 3h)
+      ▼  lissage (moyenne glissante 1h / 3h) — historiques persistés entre redémarrages
 [Moyennes]
       │
       ├──▶  H_min = T_eau / 2  (plancher)
@@ -207,20 +214,26 @@ Ces règles s'appliquent **par-dessus** la décision logique, comme des verrous 
       │
       └──▶  H_target = max(H_target_veille, H_min_adj, H_dyn_adj)  ← figé à la hausse
 
-[H_target vs H_done]  →  H_remaining = H_target − H_done
+[Bloc centré sur le midi solaire]
+      run_start = midi_solaire − H_target/2
+      run_end   = midi_solaire + H_target/2
       │
       ▼
 [Décision ON/OFF]
-      ├── Fenêtre solaire active ?  →  ON
-      ├── Retard critique ?         →  ON
-      ├── Fin de journée en retard? →  ON
-      └── Aucune condition          →  OFF
+      ├── Dans le bloc (run_start → run_end) ?     →  ON
+      ├── Dans la fenêtre solaire (±4 h) ?         →  raison : "Fenêtre solaire"
+      ├── Hors fenêtre mais dans le bloc ?          →  raison : "Rattrapage – retard"
+      ├── Passé run_end, objectif non atteint ?     →  ON (rattrapage fin de journée)
+      └── Aucune condition                          →  OFF
       │
       ▼
 [Garde-fous]  →  anti-cycle, plage horaire, plafond
       │
       ▼
 [Commande switch pompe]
+      │
+      ▼
+[Notifications]  →  critique / intermédiaire / détaillé (optionnel)
 ```
 
 ---
@@ -237,7 +250,7 @@ L'objectif est de maintenir l'eau en mouvement pour éviter le gel des tuyaux.
 La pompe reste **complètement éteinte**.
 En hivernage, aucun besoin de filtration hors période de gel.
 
-La détection de gel se fait sur la température **actuelle** (non lissée) pour réagir immédiatement.
+La détection de gel se fait sur la température **actuelle** (non lissée) pour réagir immédiatement. Les deux conditions sont **cumulatives** : le gel doit être présent aussi bien dans l'air que dans l'eau.
 
 ### Mode éco
 
@@ -253,12 +266,41 @@ H_shiftable = H_target − H_day_min        ← peut être déplacé en heures c
 En fenêtre solaire, la pompe assure d'abord `H_day_min` (priorité absolue). Le temps restant (`H_shiftable`) est décalé vers les heures creuses configurées.
 
 **Suspension automatique** si l'une des conditions suivantes est vraie :
-- Retard critique en cours
+- Retard critique dans le bloc de filtration en cours
 - T_eau > 28 °C
 - UV moyen > 6
 - Minimum diurne progressif non atteint en fenêtre solaire
 
 Dans ces cas, le système revient automatiquement au comportement normal jusqu'à ce que les conditions redeviennent favorables.
+
+---
+
+## Notifications
+
+Le système peut envoyer des notifications push sur un ou plusieurs appareils en cas d'événement.
+
+### Configuration
+
+Dans **Paramètres → Intégrations → Pool Filtration → Configurer** :
+
+| Option | Description |
+|--------|-------------|
+| **Niveau de notification** | `Désactivé` / `Critique` / `Intermédiaire` / `Détaillé` |
+| **Appareils de notification** | Noms de services séparés par des virgules — ex. : `notify.mobile_app_iphone,notify.mobile_app_tablette` |
+
+> **Format du champ appareils** : indiquer le nom complet du service HA au format `domaine.service`. Si seul le nom du service est saisi (ex. `mobile_app_iphone`), le domaine `notify` est assumé. `notify.notify` envoie sur tous les appareils mobiles enregistrés par défaut.
+
+### Niveaux (cumulatifs)
+
+| Niveau | Événements déclencheurs |
+|--------|------------------------|
+| 🚨 **Critique** | La pompe n'a pas pu démarrer ou s'arrêter (exception HA lors de l'appel de service) |
+| ⚠️ **Intermédiaire** | Critique + capteur indisponible depuis > 30 min + capteur rétabli + arrêt inattendu de la pompe |
+| ✅ **Détaillé** | Intermédiaire + pompe démarrée (heure + temp. eau + objectif) + pompe arrêtée (heure + temp. eau + filtration effectuée) |
+
+### Délai de grâce pour les capteurs
+
+Une indisponibilité de capteur de **moins de 30 minutes** (ex. bref redémarrage HA) ne déclenche aucune notification. La notification "capteur rétabli" n'est envoyée que si la notification "capteur indisponible" avait été émise au préalable.
 
 ---
 
@@ -337,52 +379,69 @@ Six vues thématiques pour un suivi détaillé.
 
 | Entité | Description |
 |--------|-------------|
-| `sensor.pool_filtration_target_hours` | Objectif journalier calculé (h) |
-| `sensor.pool_filtration_done_hours` | Temps déjà filtré aujourd'hui (h) |
-| `sensor.pool_filtration_remaining_hours` | Temps restant à filtrer (h) |
-| `sensor.pool_filtration_status` | ON / OFF logique |
+| `sensor.pool_filtration_objectif_filtration` | Objectif journalier calculé (h) |
+| `sensor.pool_filtration_filtration_effectuee` | Temps déjà filtré aujourd'hui (h) |
+| `sensor.pool_filtration_filtration_restante` | Temps restant à filtrer (h) |
+| `sensor.pool_filtration_etat_filtration` | ON / OFF logique |
 
 ### Capteurs de transparence
 
 | Entité | Description |
 |--------|-------------|
-| `sensor.pool_decision_reason` | Pourquoi la pompe tourne (ou non) |
-| `sensor.pool_system_state` | État global : normal / catching_up / winter / eco / busy / idle / degraded |
-| `sensor.pool_delay_status` | À l'heure / En retard |
-| `sensor.pool_time_remaining_window` | Temps restant dans la fenêtre solaire (h) |
+| `sensor.pool_filtration_raison_de_la_decision` | Pourquoi la pompe tourne (ou non) |
+| `sensor.pool_filtration_etat_du_systeme` | État global : normal / catching_up / winter / eco / busy / idle / degraded |
+| `sensor.pool_filtration_statut_du_planning` | À l'heure / En retard (tolérance 30 min) |
+| `sensor.pool_filtration_temps_restant_fenetre_solaire` | Temps restant dans le bloc de filtration du jour (h) |
 
 ### Capteurs calculés
 
 | Entité | Description |
 |--------|-------------|
-| `sensor.pool_dynamic_target` | H_dyn du cycle en cours |
-| `sensor.pool_minimum_target` | H_min du cycle en cours |
-| `sensor.pool_water_temp_avg_3h` | Moyenne glissante température eau (3 h) |
-| `sensor.pool_air_temp_avg_3h` | Moyenne glissante température air (3 h) |
-| `sensor.pool_uv_avg_1h` | Moyenne glissante UV (1 h) |
-| `sensor.pool_wind_avg_1h` | Moyenne glissante vent (1 h) |
+| `sensor.pool_filtration_objectif_dynamique` | H_dyn du cycle en cours |
+| `sensor.pool_filtration_objectif_minimal` | H_min du cycle en cours |
+| `sensor.pool_filtration_facteur_de_correction_objectif` | Facteur F_correction actif |
+| `sensor.pool_filtration_temp_eau_moy_3_h` | Moyenne glissante température eau (3 h) |
+| `sensor.pool_filtration_temp_air_moy_3_h` | Moyenne glissante température air (3 h) |
+| `sensor.pool_filtration_uv_moy_1_h` | Moyenne glissante UV (1 h) |
+| `sensor.pool_filtration_vent_moy_1_h` | Moyenne glissante vent (1 h) |
 
 ### Capteurs éco
 
 | Entité | Description |
 |--------|-------------|
-| `sensor.pool_eco_shiftable_hours` | H_shiftable : heures déplaçables en HC (h) |
-| `sensor.pool_eco_remaining_shiftable` | Heures déplaçables restantes à faire en HC (h) |
-| `sensor.pool_eco_allowed` | Mode éco actif ou suspendu |
-| `sensor.pool_current_tariff` | Tarif actuel : HC (heures creuses) ou HP (heures pleines) |
+| `sensor.pool_filtration_eco_heures_depla_ables` | H_shiftable : heures déplaçables en HC (h) |
+| `sensor.pool_filtration_eco_heures_depla_ables_restantes` | Heures déplaçables restantes à faire en HC (h) |
+| `sensor.pool_filtration_statut_mode_eco` | Mode éco actif ou suspendu |
+| `sensor.pool_filtration_tarif_actuel` | Tarif actuel : HC (heures creuses) ou HP (heures pleines) |
+
+### Capteurs mode forte fréquentation
+
+| Entité | Description |
+|--------|-------------|
+| `sensor.pool_filtration_statut_mode_forte_frequentation` | Statut : `active` / `standby` |
+| `sensor.pool_filtration_duree_boost_nocturne` | Durée configurée (h) |
+| `sensor.pool_filtration_fenetre_boost_nocturne` | Fenêtre calculée, ex : `00:45 – 02:45` |
+| `sensor.pool_filtration_temps_restant_boost` | Temps restant dans la fenêtre boost (h) |
 
 ### Switchs
 
 | Entité | Description |
 |--------|-------------|
-| `switch.pool_winter_mode` | Activer le mode hivernage |
-| `switch.pool_filtration_eco_mode` | Activer le mode éco |
+| `switch.pool_filtration_mode_hivernage` | Activer le mode hivernage |
+| `switch.pool_filtration_mode_eco` | Activer le mode éco |
+| `switch.pool_filtration_mode_forte_frequentation` | Activer le mode forte fréquentation |
+
+### Bouton
+
+| Entité | Description |
+|--------|-------------|
+| `button.pool_filtration_reinitialiser_les_compteurs_journaliers` | Remet `H_target` à zéro manuellement |
 
 ---
 
 ## Mode hivernage
 
-Activé via `switch.pool_winter_mode`.
+Activé via `switch.pool_filtration_mode_hivernage`.
 
 | Condition | Comportement |
 |-----------|--------------|
@@ -393,7 +452,7 @@ Activé via `switch.pool_winter_mode`.
 
 ## Mode forte fréquentation (boost nocturne)
 
-Activé via `switch.pool_busy_mode`.
+Activé via `switch.pool_filtration_mode_forte_frequentation`.
 
 Ce mode ajoute un cycle de filtration nocturne **en plus** de la logique normale. Il est conçu pour les périodes de forte utilisation de la piscine (week-ends, vacances, fêtes).
 
@@ -434,15 +493,6 @@ Réglable dans **Paramètres → Intégrations → Pool Filtration → Configure
 
 Le boost est **suspendu automatiquement** si les capteurs critiques sont indisponibles (mode dégradé).
 
-### Capteurs exposés
-
-| Entité | Description |
-|--------|-------------|
-| `sensor.pool_busy_mode_active` | Statut : `active` / `standby` |
-| `sensor.pool_busy_boost_duration` | Durée configurée (h) |
-| `sensor.pool_busy_boost_window` | Fenêtre calculée, ex : `00:45 – 02:45` |
-| `sensor.pool_busy_remaining_time` | Temps restant dans la fenêtre boost (h) |
-
 ### Non-interférence
 
 Le boost nocturne est une **surcouche additive** : il ne modifie pas `H_target`, `H_min`, `H_dyn`, le mode éco ni la logique de rattrapage. La pompe tourne plus longtemps, mais les calculs normaux restent inchangés.
@@ -451,7 +501,7 @@ Le boost nocturne est une **surcouche additive** : il ne modifie pas `H_target`,
 
 ## Mode éco
 
-Activé via `switch.pool_filtration_eco_mode`.
+Activé via `switch.pool_filtration_mode_eco`.
 
 Configurer les heures creuses dans **Paramètres → Intégrations → Pool Filtration → Configurer** :
 
@@ -473,7 +523,7 @@ Configurer les heures creuses dans **Paramètres → Intégrations → Pool Filt
 Le mode éco est automatiquement suspendu (comportement normal) si :
 - T_eau > 28 °C
 - UV moyen > 6
-- Retard critique (plus de temps restant que de fenêtre disponible)
+- Retard critique dans le bloc de filtration en cours
 - Minimum diurne progressif non atteint en fenêtre solaire
 
 ---
@@ -484,7 +534,7 @@ Le mode éco est automatiquement suspendu (comportement normal) si :
 - **Plages horaires** : 06h00 – 23h00 par défaut (configurable)
 - **Plafond journalier** : 18 h par défaut, configurable de 6 à 24 h
 - **Anti-régression** : l'objectif ne diminue jamais en cours de journée
-- **Capteur indisponible** : valeurs de repli, état `degraded` visible
+- **Capteur indisponible** : historiques persistés entre redémarrages ; valeur de repli + état `degraded` visible si l'historique expire ; notification après 30 min d'indisponibilité continue
 
 ---
 
@@ -497,9 +547,13 @@ H_min  = 24 / 2 = 12 h
 H_dyn  = 12 + 0.20×(6−3) + 0.04×(25−15) + 0.12×(29−26)
        = 12 + 0.60 + 0.40 + 0.36 = 13.36 h
 H_target = 13.36 h
+
+Bloc de filtration (midi solaire = 13h37) :
+  run_start = 13:37 − 6h41 = 06:56
+  run_end   = 13:37 + 6h41 = 20:18
 ```
 
-La pompe tourne ~13h36, réparties autour du midi solaire, avec rattrapage automatique si elle a été arrêtée manuellement.
+La pompe tourne de ~07h00 à ~20h20, centrée sur l'heure la plus chaude de la journée.
 
 ---
 
@@ -517,7 +571,9 @@ Accessibles via **Paramètres → Intégrations → Pool Filtration → Configur
 | Intervalle cycle hivernage | 4 h | Temps entre deux cycles anti-gel |
 | Durée cycle hivernage | 60 min | Durée de chaque cycle anti-gel |
 | Durée boost nocturne | 2 h | Durée du boost forte fréquentation (0,5–6 h) |
-| Plages heures creuses | — | Une ou plusieurs plages HC (option A) — voir format ci-dessous |
+| **Niveau de notification** | **Désactivé** | **Critique / Intermédiaire / Détaillé** |
+| **Appareils de notification** | — | **Services séparés par virgules — ex. `notify.mobile_app_iphone`** |
+| Plages heures creuses | — | Une ou plusieurs plages HC (option A) — voir format ci-dessus |
 | Binary sensor HC | — | Entité `binary_sensor` indiquant les HC (option B, prioritaire) |
 | Interrupteur pompe | — | Remplace l'entité sélectionnée lors de l'installation |
 | Capteur température eau | — | Remplace l'entité sélectionnée lors de l'installation |
