@@ -129,6 +129,7 @@ NOTIF_PRIORITY: dict[str, int] = {
     NOTIF_LEVEL_DETAILED: 3,
 }
 SENSOR_NOTIF_GRACE_MINUTES = 30  # delay before notifying a degraded sensor
+PUMP_COMMAND_GRACE_MINUTES = 20  # delay before alerting on an unconfirmed pump command
 
 # ---------------------------------------------------------------------------
 # Persistent storage

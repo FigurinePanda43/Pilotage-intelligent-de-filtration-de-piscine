@@ -74,6 +74,7 @@ from .const import (
     NOTIF_LEVEL_DETAILED,
     NOTIF_PRIORITY,
     SENSOR_NOTIF_GRACE_MINUTES,
+    PUMP_COMMAND_GRACE_MINUTES,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -123,6 +124,12 @@ class PoolFiltrationCoordinator(DataUpdateCoordinator):
         self._prev_sensor_degraded: dict[str, bool] = {}
         self._sensor_degraded_since: dict[str, datetime] = {}
         self._sensor_notif_sent: dict[str, bool] = {}
+
+        # Tracks how long a commanded pump state has failed to be confirmed
+        # by the switch entity (e.g. unreachable device) so we can escalate.
+        self._pump_command_target: bool | None = None
+        self._pump_command_unconfirmed_since: datetime | None = None
+        self._pump_command_alert_sent: bool = False
 
     # ------------------------------------------------------------------
     # Public helpers (called from switch entity)
@@ -668,11 +675,26 @@ class PoolFiltrationCoordinator(DataUpdateCoordinator):
         return elapsed >= MIN_ON_MINUTES
 
     async def _set_pump(self, turn_on: bool) -> None:
-        """Call HA service to change pump switch state."""
+        """Call HA service to change pump switch state, then verify it took effect.
+
+        A successful service call does not guarantee the physical/cloud device
+        actually switched (e.g. unreachable smart plug) – the switch entity's
+        state can lag or never change. Since `_apply_decision` retries every
+        coordinator cycle while the mismatch persists, we track how long a
+        command has gone unconfirmed and escalate so a stuck command is never
+        silent.
+        """
         entity_id = self._get_entity(CONF_PUMP_SWITCH)
         if not entity_id:
             _LOGGER.error("Pool pump switch entity not configured — cannot control pump")
             return
+
+        now = dt_util.now()
+        if self._pump_command_target != turn_on:
+            self._pump_command_target = turn_on
+            self._pump_command_unconfirmed_since = None
+            self._pump_command_alert_sent = False
+
         service = "turn_on" if turn_on else "turn_off"
         try:
             await self.hass.services.async_call(
@@ -681,14 +703,57 @@ class PoolFiltrationCoordinator(DataUpdateCoordinator):
                 {"entity_id": entity_id},
                 blocking=True,
             )
-            _LOGGER.info("Pool pump: %s", "ON" if turn_on else "OFF")
         except Exception as exc:  # noqa: BLE001
             _LOGGER.error("Failed to %s pool pump: %s", service, exc)
-            await self._notify(
-                NOTIF_LEVEL_CRITICAL,
-                "🚨 Pompe – échec commande",
-                f"Impossible de {'démarrer' if turn_on else 'arrêter'} la pompe.\nErreur : {exc}",
+            await self._alert_pump_command_failure(
+                f"Impossible de {'démarrer' if turn_on else 'arrêter'} la pompe.\nErreur : {exc}"
             )
+            return
+
+        state = self.hass.states.get(entity_id)
+        confirmed = state is not None and state.state == ("on" if turn_on else "off")
+
+        if confirmed:
+            _LOGGER.info("Pool pump: %s", "ON" if turn_on else "OFF")
+            self._pump_command_unconfirmed_since = None
+            self._pump_command_alert_sent = False
+            return
+
+        if self._pump_command_unconfirmed_since is None:
+            self._pump_command_unconfirmed_since = now
+        _LOGGER.warning(
+            "Pool pump: commande %s envoyée mais %s reste à l'état '%s'",
+            service, entity_id, state.state if state else "inconnu",
+        )
+        elapsed_min = (now - self._pump_command_unconfirmed_since).total_seconds() / 60.0
+        if elapsed_min >= PUMP_COMMAND_GRACE_MINUTES and not self._pump_command_alert_sent:
+            self._pump_command_alert_sent = True
+            await self._alert_pump_command_failure(
+                f"La pompe ne confirme pas la commande "
+                f"{'marche' if turn_on else 'arrêt'} depuis {elapsed_min:.0f} min.\n"
+                f"Vérifiez que l'appareil '{entity_id}' est joignable."
+            )
+
+    async def _alert_pump_command_failure(self, message: str) -> None:
+        """Raise a critical pump alert through every available channel.
+
+        Uses HA's built-in persistent_notification in addition to the
+        user-configured notify targets so the alert is always visible in the
+        UI even when notifications are set to "none" or no target is set.
+        """
+        await self._notify(NOTIF_LEVEL_CRITICAL, "🚨 Pompe – échec commande", message)
+        try:
+            await self.hass.services.async_call(
+                "persistent_notification",
+                "create",
+                {
+                    "title": "🚨 Pool Filtration – Pompe",
+                    "message": message,
+                    "notification_id": f"{DOMAIN}_pump_command_failed",
+                },
+            )
+        except Exception as exc:  # noqa: BLE001
+            _LOGGER.warning("Pool filtration: persistent_notification failed: %s", exc)
 
     # ------------------------------------------------------------------
     # Notifications
