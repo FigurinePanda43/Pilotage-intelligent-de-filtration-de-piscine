@@ -74,7 +74,8 @@
           "winter_frost_cycle": "Hivernage – cycle gel",
           "winter_standby": "Hivernage – veille (pas de gel)",
           "eco_off_peak": "Éco – heures creuses",
-          "eco_peak_hours": "Éco – attente heures creuses"
+          "eco_peak_hours": "Éco – attente heures creuses",
+          "manual_mode": "Mode manuel"
         }
       },
       "system_state": {
@@ -85,7 +86,8 @@
           "winter": "Mode hivernage",
           "eco": "Mode éco",
           "idle": "En attente",
-          "degraded": "Dégradé (capteur indisponible)"
+          "degraded": "Dégradé (capteur indisponible)",
+          "manual": "Mode manuel"
         }
       },
       "target_factor": { "name": "Facteur de correction objectif" },
@@ -110,7 +112,8 @@
     "switch": {
       "winter_mode": { "name": "Mode hivernage" },
       "eco_mode": { "name": "Mode éco" },
-      "busy_mode": { "name": "Mode forte fréquentation" }
+      "busy_mode": { "name": "Mode forte fréquentation" },
+      "manual_mode": { "name": "Mode manuel" }
     },
     "button": {
       "reset_counters": { "name": "Réinitialiser les compteurs journaliers" }

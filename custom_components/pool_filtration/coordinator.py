@@ -116,6 +116,7 @@ class PoolFiltrationCoordinator(DataUpdateCoordinator):
         self._last_winter_cycle: datetime | None = None
         self._eco_mode: bool = False
         self._busy_mode: bool = False
+        self._manual_mode: bool = False
 
         self._persistent_loaded: bool = False
 
@@ -164,6 +165,19 @@ class PoolFiltrationCoordinator(DataUpdateCoordinator):
         """Enable or disable busy (high-occupancy) mode and persist the change."""
         self._busy_mode = enabled
         _LOGGER.info("Pool filtration: busy mode %s", "ENABLED" if enabled else "DISABLED")
+        await self._save_persistent_data()
+        await self.async_request_refresh()
+
+    async def set_manual_mode(self, enabled: bool) -> None:
+        """Enable or disable manual mode and persist the change.
+
+        While enabled, the coordinator stops sending on/off commands to the
+        pump switch entirely – the user (or any other automation) has full
+        control. Filtration tracking and all other sensors keep working as
+        usual, based on whatever state the switch is actually in.
+        """
+        self._manual_mode = enabled
+        _LOGGER.info("Pool filtration: manual mode %s", "ENABLED" if enabled else "DISABLED")
         await self._save_persistent_data()
         await self.async_request_refresh()
 
@@ -343,24 +357,31 @@ class PoolFiltrationCoordinator(DataUpdateCoordinator):
         )
 
         # ── Pump decision ────────────────────────────────────────────────
-        pump_should_be_on, decision_reason = self._decide(
-            now=now,
-            h_remaining=h_remaining,
-            in_window=in_window,
-            in_run_block=in_run_block,
-            run_end=run_end,
-            frost_condition=frost_condition,
-            eco_allowed=eco_allowed,
-            h_day_min=h_day_min,
-            h_shiftable_remaining=h_shiftable_remaining,
-            is_off_peak=is_off_peak,
-            in_boost_window=in_boost_window,
-            degraded=degraded,
-        )
+        # Manual mode overrides everything else (including winter mode): the
+        # coordinator stops commanding the pump and just reports its actual
+        # state, leaving full control to the user.
+        if self._manual_mode:
+            pump_should_be_on, decision_reason = pump_is_on, "manual_mode"
+        else:
+            pump_should_be_on, decision_reason = self._decide(
+                now=now,
+                h_remaining=h_remaining,
+                in_window=in_window,
+                in_run_block=in_run_block,
+                run_end=run_end,
+                frost_condition=frost_condition,
+                eco_allowed=eco_allowed,
+                h_day_min=h_day_min,
+                h_shiftable_remaining=h_shiftable_remaining,
+                is_off_peak=is_off_peak,
+                in_boost_window=in_boost_window,
+                degraded=degraded,
+            )
 
         system_state = self._compute_system_state(pump_should_be_on, decision_reason, degraded)
 
-        await self._apply_decision(now, pump_is_on, pump_should_be_on)
+        if not self._manual_mode:
+            await self._apply_decision(now, pump_is_on, pump_should_be_on)
         await self._save_persistent_data()
 
         # ── Notifications ────────────────────────────────────────────────
@@ -930,6 +951,8 @@ class PoolFiltrationCoordinator(DataUpdateCoordinator):
         pump_should_be_on: bool, reason: str, degraded: bool
     ) -> str:
         """High-level system state for dashboard display."""
+        if reason == "manual_mode":
+            return "manual"
         if degraded:
             return "degraded"
         if reason.startswith("winter"):
@@ -1110,6 +1133,7 @@ class PoolFiltrationCoordinator(DataUpdateCoordinator):
         self._winter_mode = bool(data.get("winter_mode", False))
         self._eco_mode = bool(data.get("eco_mode", False))
         self._busy_mode = bool(data.get("busy_mode", False))
+        self._manual_mode = bool(data.get("manual_mode", False))
 
         def _parse_dt(key: str) -> datetime | None:
             raw = data.get(key)
@@ -1171,6 +1195,7 @@ class PoolFiltrationCoordinator(DataUpdateCoordinator):
                 "winter_mode": self._winter_mode,
                 "eco_mode": self._eco_mode,
                 "busy_mode": self._busy_mode,
+                "manual_mode": self._manual_mode,
                 "last_commanded_on": _iso(self._last_commanded_on),
                 "last_commanded_off": _iso(self._last_commanded_off),
                 "last_state_check": _iso(self._last_state_check),

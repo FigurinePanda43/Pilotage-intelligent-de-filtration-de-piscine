@@ -77,7 +77,8 @@
           "winter_frost_cycle": "Winter – frost cycle",
           "winter_standby": "Winter – standby (no frost)",
           "eco_off_peak": "Eco – off-peak hours",
-          "eco_peak_hours": "Eco – waiting for off-peak"
+          "eco_peak_hours": "Eco – waiting for off-peak",
+          "manual_mode": "Manual mode"
         }
       },
       "system_state": {
@@ -88,7 +89,8 @@
           "winter": "Winter mode",
           "eco": "Eco mode",
           "idle": "Idle",
-          "degraded": "Degraded (sensor unavailable)"
+          "degraded": "Degraded (sensor unavailable)",
+          "manual": "Manual mode"
         }
       },
       "target_factor": { "name": "Target correction factor" },
@@ -113,7 +115,8 @@
     "switch": {
       "winter_mode": { "name": "Winter mode" },
       "eco_mode": { "name": "Eco mode" },
-      "busy_mode": { "name": "Busy mode" }
+      "busy_mode": { "name": "Busy mode" },
+      "manual_mode": { "name": "Manual mode" }
     },
     "button": {
       "reset_counters": { "name": "Reset daily counters" }

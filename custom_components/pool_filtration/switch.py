@@ -22,6 +22,7 @@ async def async_setup_entry(
         PoolWinterModeSwitch(coordinator, entry),
         PoolEcoModeSwitch(coordinator, entry),
         PoolBusyModeSwitch(coordinator, entry),
+        PoolManualModeSwitch(coordinator, entry),
     ])
 
 
@@ -122,3 +123,36 @@ class PoolBusyModeSwitch(CoordinatorEntity[PoolFiltrationCoordinator], SwitchEnt
 
     async def async_turn_off(self, **kwargs) -> None:  # noqa: ANN003
         await self.coordinator.set_busy_mode(False)
+
+
+class PoolManualModeSwitch(CoordinatorEntity[PoolFiltrationCoordinator], SwitchEntity):
+    """Switch to enable/disable manual mode (pump controlled by the user)."""
+
+    _attr_has_entity_name = True
+    _attr_translation_key = "manual_mode"
+    _attr_device_class = SwitchDeviceClass.SWITCH
+    _attr_icon = "mdi:hand-back-right"
+
+    def __init__(
+        self,
+        coordinator: PoolFiltrationCoordinator,
+        entry: ConfigEntry,
+    ) -> None:
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{entry.entry_id}_manual_mode"
+        self._attr_device_info = {
+            "identifiers": {(DOMAIN, entry.entry_id)},
+            "name": "Pool Filtration",
+            "manufacturer": "Pool Filtration",
+            "model": "Smart Controller",
+        }
+
+    @property
+    def is_on(self) -> bool:
+        return self.coordinator._manual_mode
+
+    async def async_turn_on(self, **kwargs) -> None:  # noqa: ANN003
+        await self.coordinator.set_manual_mode(True)
+
+    async def async_turn_off(self, **kwargs) -> None:  # noqa: ANN003
+        await self.coordinator.set_manual_mode(False)

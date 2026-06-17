@@ -322,7 +322,7 @@ Vue rapide sur une seule page. Idéal pour un téléphone ou un panneau compact.
 | Jauge | Progression de la filtration journalière |
 | Objectifs | H_target / effectuée / restante |
 | Conditions | Température eau, air, vent |
-| Modes | Hivernage, éco, forte fréquentation + bouton reset |
+| Modes | Manuel, hivernage, éco, forte fréquentation + bouton reset |
 
 **Utilisation :**
 1. Dashboard → ⋮ → *Modifier* → *Ajouter une vue*
@@ -439,6 +439,18 @@ Six vues thématiques pour un suivi détaillé.
 
 ---
 
+## Mode manuel
+
+Activé via `switch.pool_filtration_mode_manuel`.
+
+Ce mode donne le contrôle total de la pompe à l'utilisateur : tant qu'il est actif, l'intégration **n'envoie plus aucune commande** marche/arrêt à la pompe — elle se contente d'observer son état réel et de continuer à calculer les objectifs et le temps de filtration effectué pour affichage.
+
+C'est la priorité **la plus haute** : elle prend le pas sur le mode hivernage, le boost forte fréquentation, le mode éco et la logique normale. Pratique pour une intervention ponctuelle (nettoyage, contre-lavage du filtre, test du matériel) sans avoir à désactiver l'intégration.
+
+Pensez à désactiver le mode manuel pour que la filtration automatique reprenne.
+
+---
+
 ## Mode hivernage
 
 Activé via `switch.pool_filtration_mode_hivernage`.
@@ -487,9 +499,10 @@ Réglable dans **Paramètres → Intégrations → Pool Filtration → Configure
 
 | Priorité | Mode |
 |----------|------|
-| 1 | Mode hivernage (sécurité) |
-| 2 | Boost nocturne forte fréquentation |
-| 3 | Mode éco / logique normale |
+| 1 | Mode manuel (contrôle utilisateur) |
+| 2 | Mode hivernage (sécurité) |
+| 3 | Boost nocturne forte fréquentation |
+| 4 | Mode éco / logique normale |
 
 Le boost est **suspendu automatiquement** si les capteurs critiques sont indisponibles (mode dégradé).
 
